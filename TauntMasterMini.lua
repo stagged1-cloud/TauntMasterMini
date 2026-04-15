@@ -768,32 +768,20 @@ function TauntMasterMini_Button_OnShow(self)
             self.name:Hide()
         else
             self.name:Show()
-            local class = select(2, UnitClass(unit))
-            local color = class and RAID_CLASS_COLORS[class]
-            -- Brighten class colours slightly for readability on dark/coloured bars
-            local function brighten(c)
-                return math.min(1, c.r * 1.15 + 0.1), math.min(1, c.g * 1.15 + 0.1), math.min(1, c.b * 1.15 + 0.1)
-            end
-            if color then
-                local name = UnitName(unit)
-                if name then
-                    self.name:SetText(name)
-                    self.name:SetTextColor(brighten(color))
-                else
-                    C_Timer.After(0.5, function()
-                        if UnitExists(unit) and self.name then
-                            local retryName = UnitName(unit)
-                            if retryName then
-                                self.name:SetText(retryName)
-                                local retryClass = select(2, UnitClass(unit))
-                                local retryColor = retryClass and RAID_CLASS_COLORS[retryClass]
-                                if retryColor then
-                                    self.name:SetTextColor(brighten(retryColor))
-                                end
-                            end
+            local name = UnitName(unit)
+            if name then
+                self.name:SetText(name)
+                self.name:SetTextColor(1, 1, 1)
+            else
+                C_Timer.After(0.5, function()
+                    if UnitExists(unit) and self.name then
+                        local retryName = UnitName(unit)
+                        if retryName then
+                            self.name:SetText(retryName)
+                            self.name:SetTextColor(1, 1, 1)
                         end
-                    end)
-                end
+                    end
+                end)
             end
         end
     end
@@ -806,19 +794,18 @@ function TauntMasterMini_UpdateThreat(button)
     if not button.healthbar then return end
     local unit = button:GetAttribute('unit')
     if not unit or not UnitExists(unit) then
-        button.healthbar:SetStatusBarColor(0.45, 0.45, 0.45)
+        button.healthbar:SetStatusBarColor(0, 0.8, 0)
         return
     end
 
     -- Custom threat colour scheme:
-    --   Grey   = not in combat
-    --   Green  = in combat, no aggro
+    --   Green  = no aggro / not in combat
     --   Yellow = losing or gaining aggro
     --   Red    = full aggro (tanking securely)
 
     -- UnitAffectingCombat is C-side and returns clean values.
     if not UnitAffectingCombat(unit) then
-        button.healthbar:SetStatusBarColor(0.45, 0.45, 0.45)  -- Grey
+        button.healthbar:SetStatusBarColor(0, 0.8, 0)  -- Green
         return
     end
 
