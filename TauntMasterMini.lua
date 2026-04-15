@@ -907,7 +907,6 @@ function TauntMasterMini_UpdateIcons(button)
     if not unit or not UnitExists(unit) then return end
 
     -- Role icon: show Tank/Healer/DPS based on assigned group role
-    -- Try multiple approaches for maximum compatibility
     if button._roleIcon and button._roleIconTex then
         local role = UnitGroupRolesAssigned(unit)
         if not role or role == 'NONE' then
@@ -923,26 +922,12 @@ function TauntMasterMini_UpdateIcons(button)
                 role = 'DAMAGER'
             end
         end
-        -- Try atlas first (modern WoW), fall back to texture+coords
-        local ok = pcall(function()
-            if role == 'TANK' then
-                button._roleIconTex:SetAtlas('roleicon-tank')
-            elseif role == 'HEALER' then
-                button._roleIconTex:SetAtlas('roleicon-healer')
-            else
-                button._roleIconTex:SetAtlas('roleicon-dps')
-            end
-        end)
-        if not ok or not button._roleIconTex:GetTexture() then
-            -- Fallback: use the LFG roles texture sheet with hardcoded coords
-            button._roleIconTex:SetTexture('Interface\\LFGFrame\\UI-LFG-ICON-ROLES')
-            if role == 'TANK' then
-                button._roleIconTex:SetTexCoord(0, 0.265625, 0.265625, 0.53125)
-            elseif role == 'HEALER' then
-                button._roleIconTex:SetTexCoord(0.265625, 0.53125, 0, 0.265625)
-            else
-                button._roleIconTex:SetTexCoord(0.265625, 0.53125, 0.265625, 0.53125)
-            end
+        if role == 'TANK' then
+            button._roleIconTex:SetAtlas('roleicon-tank')
+        elseif role == 'HEALER' then
+            button._roleIconTex:SetAtlas('roleicon-healer')
+        else
+            button._roleIconTex:SetAtlas('roleicon-dps')
         end
         button._roleIcon:Show()
     end
