@@ -713,6 +713,26 @@ function TauntMasterMini_Button_OnShow(self)
     local unit = self:GetAttribute('unit')
     if not unit or not UnitExists(unit) then return end
 
+    -- Set class-colour background and class icon
+    local class = select(2, UnitClass(unit))
+    if class then
+        local color = RAID_CLASS_COLORS[class]
+        if color and self._classBg then
+            self._classBg:SetColorTexture(color.r * 0.3, color.g * 0.3, color.b * 0.3, 0.85)
+        end
+        if self._classIcon and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class] then
+            self._classIcon:SetTexCoord(unpack(CLASS_ICON_TCOORDS[class]))
+            self._classIcon:Show()
+        end
+    else
+        if self._classBg then
+            self._classBg:SetColorTexture(0.15, 0.15, 0.15, 0.8)
+        end
+        if self._classIcon then
+            self._classIcon:Hide()
+        end
+    end
+
     -- Show or hide the name label based on setting
     if self.name then
         if TauntMasterMiniDB and TauntMasterMiniDB.showNames == false then
@@ -974,6 +994,21 @@ local function TMM_CreateUnitButton(index)
     hb:EnableMouse(false)
     btn.healthbar = hb
 
+    -- Class-colour background on the health bar itself so it shows
+    -- behind the fill as the "empty" portion and is not occluded.
+    local classBg = hb:CreateTexture(name .. '_ClassBG', 'BACKGROUND')
+    classBg:SetAllPoints(hb)
+    classBg:SetColorTexture(0.15, 0.15, 0.15, 0.8)
+    btn._classBg = classBg
+
+    -- Class icon on the left edge of the bar
+    local classIcon = btn:CreateTexture(name .. '_ClassIcon', 'OVERLAY')
+    classIcon:SetSize(16, 16)
+    classIcon:SetPoint('LEFT', btn, 'LEFT', 2, 0)
+    classIcon:SetTexture('Interface\\WorldStateFrame\\Icons-Classes')
+    classIcon:Hide()
+    btn._classIcon = classIcon
+
     local label = btn:CreateFontString(name .. '_Name', 'OVERLAY', 'GameFontHighlight')
     label:SetAllPoints(btn)
     label:SetJustifyH('CENTER')
@@ -983,7 +1018,7 @@ local function TMM_CreateUnitButton(index)
 
     local tankIcon = btn:CreateTexture(name .. '_TM_Tank_Icon', 'OVERLAY')
     tankIcon:SetSize(18, 18)
-    tankIcon:SetPoint('LEFT', btn, 'LEFT', 2, 0)
+    tankIcon:SetPoint('LEFT', btn, 'LEFT', 20, 0)
     tankIcon:SetTexture('Interface\\LFGFrame\\UI-LFG-ICON-ROLES')
     if ROLE_ICON_TCOORDS and ROLE_ICON_TCOORDS.TANK then
         tankIcon:SetTexCoord(unpack(ROLE_ICON_TCOORDS.TANK))
