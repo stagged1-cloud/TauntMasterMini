@@ -42,6 +42,7 @@ local DEFAULTS = {
     rightClickSpell = '',
     showCooldowns = true,
     showNames = true,
+    skullSize = 20,
     pullAlertEnabled = true,
     pullAlertPartyChat = true,
     firstPullNotification = true,
@@ -1586,7 +1587,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 620)
+        f:SetSize(360, 670)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1791,6 +1792,15 @@ TMM_CreateOrInitUI = function()
             TMM_SetLocked(val)
         end)
 
+        AddSlider('Skull Marker Size', 12, 40, 1, function()
+            return TauntMasterMiniDB.skullSize or 20
+        end, function(v)
+            TauntMasterMiniDB.skullSize = v
+            if TauntMasterMini_Header and TauntMasterMini_Header._skullBtn then
+                TauntMasterMini_Header._skullBtn:SetSize(v, v)
+            end
+        end)
+
         -- Pull Alert section
         y = y - 10
         local pullHeader = f:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
@@ -1873,7 +1883,8 @@ TMM_CreateOrInitUI = function()
 
         local skullBtn = CreateFrame('Button', 'TMMSkullToggle', UIParent,
             'SecureActionButtonTemplate')
-        skullBtn:SetSize(20, 20)
+        local skullSz = TauntMasterMiniDB and TauntMasterMiniDB.skullSize or 20
+        skullBtn:SetSize(skullSz, skullSz)
         skullBtn:SetPoint('BOTTOM', header, 'TOP', 0, 2)
         skullBtn:SetFrameStrata(header:GetFrameStrata())
         skullBtn:SetFrameLevel(header:GetFrameLevel() + 5)
@@ -1954,6 +1965,11 @@ TMM_CreateOrInitUI = function()
                         btn:SetWidth(TauntMasterMiniDB.width)
                         btn:SetHeight(TauntMasterMiniDB.height)
                     end
+                end
+
+                -- Apply saved skull marker size
+                if self._skullBtn and TauntMasterMiniDB.skullSize then
+                    self._skullBtn:SetSize(TauntMasterMiniDB.skullSize, TauntMasterMiniDB.skullSize)
                 end
 
                 -- Show/hide header based on saved preference
