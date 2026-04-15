@@ -755,7 +755,7 @@ function TauntMasterMini_Button_OnShow(self)
         end
     else
         if self._classBg then
-            self._classBg:SetColorTexture(0.15, 0.15, 0.15, 0.8)
+            self._classBg:SetColorTexture(0, 0, 0, 0.85)
         end
         if self._classIcon then
             self._classIcon:Hide()
@@ -806,7 +806,7 @@ function TauntMasterMini_UpdateThreat(button)
         if color then
             button.healthbar:SetStatusBarColor(color.r, color.g, color.b)
         else
-            button.healthbar:SetStatusBarColor(0.5, 0.5, 0.5)
+            button.healthbar:SetStatusBarColor(0, 0, 0)
         end
         return
     end
@@ -1113,7 +1113,7 @@ local function TMM_CreateUnitButton(index)
     -- behind the fill as the "empty" portion and is not occluded.
     local classBg = hb:CreateTexture(name .. '_ClassBG', 'BACKGROUND')
     classBg:SetAllPoints(hb)
-    classBg:SetColorTexture(0.15, 0.15, 0.15, 0.8)
+    classBg:SetColorTexture(0, 0, 0, 0.85)
     btn._classBg = classBg
 
     -- Class icon on the left edge of the bar
