@@ -922,16 +922,14 @@ function TauntMasterMini_UpdateIcons(button)
                 role = 'DAMAGER'
             end
         end
-        -- Clear any previous texture, then set atlas for current role.
-        -- SetAtlas handles both texture and texcoords in one call.
-        button._roleIconTex:SetTexture(nil)
+        -- Use standard WoW spell icons (guaranteed to exist in all versions)
         button._roleIconTex:SetTexCoord(0, 1, 0, 1)
         if role == 'TANK' then
-            button._roleIconTex:SetAtlas('roleicon-tank')
+            button._roleIconTex:SetTexture(132341)   -- Ability_Defend (shield)
         elseif role == 'HEALER' then
-            button._roleIconTex:SetAtlas('roleicon-healer')
+            button._roleIconTex:SetTexture(135915)   -- Spell_Holy_FlashHeal (cross)
         else
-            button._roleIconTex:SetAtlas('roleicon-dps')
+            button._roleIconTex:SetTexture(132349)   -- Ability_DualWield (swords)
         end
         button._roleIcon:Show()
     end
