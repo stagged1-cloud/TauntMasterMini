@@ -1123,10 +1123,11 @@ local function TMM_CreateUnitButton(index)
     classBg:SetColorTexture(0, 0, 0, 0.85)
     btn._classBg = classBg
 
-    -- Class icon on the left edge of the bar
+    -- Class icon to the left of the bar, sized to match bar height
     local classIcon = btn:CreateTexture(name .. '_ClassIcon', 'OVERLAY')
-    classIcon:SetSize(16, 16)
-    classIcon:SetPoint('LEFT', btn, 'LEFT', 2, 0)
+    local iconSize = (TMM_Get('height') or 30)
+    classIcon:SetSize(iconSize, iconSize)
+    classIcon:SetPoint('RIGHT', btn, 'LEFT', -2, 0)
     classIcon:SetTexture('Interface\\WorldStateFrame\\Icons-Classes')
     classIcon:Hide()
     btn._classIcon = classIcon
@@ -1422,6 +1423,9 @@ TMM_RebuildRoster = function()
             TMMButtons[i] = TMM_CreateUnitButton(i)
         end
         TMMButtons[i]:SetSize(bw, bh)
+        if TMMButtons[i]._classIcon then
+            TMMButtons[i]._classIcon:SetSize(bh, bh)
+        end
     end
 
     for i = needed + 1, #TMMButtons do
@@ -1445,7 +1449,8 @@ TMM_RebuildRoster = function()
         local col = math.floor((i - 1) / perCol)
         if not colY[col] then colY[col] = 0 end
         local yOff = colY[col]
-        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + col * (bw + 8), -topOffset - yOff)
+        -- Offset right by bar height + gap to make room for class icon on the left
+        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + bh + 2 + col * (bw + bh + 10), -topOffset - yOff)
         -- Advance Y: bar height + gap, plus cooldown space only for player
         local cdExtra = (showCD and UnitIsUnit(unit, 'player')) and 21 or 0
         colY[col] = yOff + bh + 4 + cdExtra
@@ -1458,7 +1463,8 @@ TMM_RebuildRoster = function()
 
     local cols = math.min(maxCols, math.max(1, math.ceil(needed / perCol)))
     local handleExtra = (parent._dragHandle and parent._dragHandle:IsShown()) and DRAG_HANDLE_HEIGHT or 0
-    parent:SetSize(10 + cols * bw + (cols - 1) * 8, 10 + totalH + handleExtra)
+    local colWidth = bw + bh + 10  -- bar + class icon + gap
+    parent:SetSize(10 + cols * colWidth, 10 + totalH + handleExtra)
 end
 
 TMM_DebugDump = function()
