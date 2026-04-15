@@ -75,33 +75,41 @@ local function TMM_GetTauntSpell()
 end
 
 local function TMM_EnsureDefaults()
+    -- Account-wide DB holds minimap settings only; everything else is per-char.
     TauntMasterMiniDB = TauntMasterMiniDB or {}
+    TauntMasterMiniDB.minimap = TauntMasterMiniDB.minimap or { hide = false }
+
+    -- Per-character settings: migrate from account-wide DB (pre-6.7.0) or
+    -- apply DEFAULTS for brand-new characters.
+    TauntMasterMiniDBChar = TauntMasterMiniDBChar or {}
+
     for key, value in pairs(DEFAULTS) do
-        if TauntMasterMiniDB[key] == nil then
-            if type(value) == 'table' then
-                TauntMasterMiniDB[key] = CopyTable and CopyTable(value) or {};
-                for k, v in pairs(value) do
-                    TauntMasterMiniDB[key][k] = v
+        if key ~= 'minimap' then  -- minimap stays account-wide
+            if TauntMasterMiniDBChar[key] == nil then
+                -- Try migrating from old account-wide value first
+                if TauntMasterMiniDB[key] ~= nil then
+                    if type(TauntMasterMiniDB[key]) == 'table' then
+                        TauntMasterMiniDBChar[key] = CopyTable and CopyTable(TauntMasterMiniDB[key]) or {}
+                    else
+                        TauntMasterMiniDBChar[key] = TauntMasterMiniDB[key]
+                    end
+                else
+                    -- No account-wide value; use default
+                    if type(value) == 'table' then
+                        TauntMasterMiniDBChar[key] = CopyTable and CopyTable(value) or {}
+                    else
+                        TauntMasterMiniDBChar[key] = value
+                    end
                 end
-            else
-                TauntMasterMiniDB[key] = value
             end
         end
     end
-    TauntMasterMiniDBChar = TauntMasterMiniDBChar or {}
+
     if TauntMasterMiniDBChar.locked == nil then
         TauntMasterMiniDBChar.locked = true
     end
     if TauntMasterMiniDBChar.hideTM == nil then
         TauntMasterMiniDBChar.hideTM = false
-    end
-
-    -- Per-character spell settings: migrate from account-wide if needed
-    if TauntMasterMiniDBChar.leftClickSpell == nil then
-        TauntMasterMiniDBChar.leftClickSpell = TauntMasterMiniDB.leftClickSpell or ''
-    end
-    if TauntMasterMiniDBChar.rightClickSpell == nil then
-        TauntMasterMiniDBChar.rightClickSpell = TauntMasterMiniDB.rightClickSpell or ''
     end
 
     local defaultTaunt = TMM_GetTauntSpell()
@@ -115,13 +123,22 @@ local function TMM_EnsureDefaults()
     end
 end
 
--- Accessor helpers for per-character spell settings
+-- Accessor helpers: all settings are per-character via TauntMasterMiniDBChar
+local function TMM_Get(key)
+    if TauntMasterMiniDBChar then return TauntMasterMiniDBChar[key] end
+    return DEFAULTS[key]
+end
+
+local function TMM_Set(key, val)
+    if TauntMasterMiniDBChar then TauntMasterMiniDBChar[key] = val end
+end
+
 local function TMM_GetLeftSpell()
-    return TauntMasterMiniDBChar and TauntMasterMiniDBChar.leftClickSpell or ''
+    return TMM_Get('leftClickSpell') or ''
 end
 
 local function TMM_GetRightSpell()
-    return TauntMasterMiniDBChar and TauntMasterMiniDBChar.rightClickSpell or ''
+    return TMM_Get('rightClickSpell') or ''
 end
 
 local function TMM_MinimapSettings()
@@ -688,28 +705,18 @@ local function TMM_ApplyDefaultsForClass()
     elseif class == 'DEMONHUNTER' then source = demonhunterTauntM_defaults
     else source = TauntM_defaults end
     source = source or {}
-    TauntMasterMiniDB = TauntMasterMiniDB or {}
+    -- Apply class defaults to per-character DB
+    TauntMasterMiniDBChar = TauntMasterMiniDBChar or {}
     for k, v in pairs(source) do
-        if TauntMasterMiniDB[k] == nil then
-            TauntMasterMiniDB[k] = v
+        if TauntMasterMiniDBChar[k] == nil then
+            TauntMasterMiniDBChar[k] = v
         end
     end
 end
 
 local function TMM_CopyDefaultsToChar()
+    -- Migration is now handled entirely by TMM_EnsureDefaults.
     TMM_EnsureDefaults()
-    for k, v in pairs(TauntMasterMiniDB) do
-        if TauntMasterMiniDBChar[k] == nil then
-            if type(v) == 'table' then
-                TauntMasterMiniDBChar[k] = CopyTable and CopyTable(v) or {};
-                for sub, val in pairs(v) do
-                    TauntMasterMiniDBChar[k][sub] = val
-                end
-            else
-                TauntMasterMiniDBChar[k] = v
-            end
-        end
-    end
 end
 
 function TauntMasterMini_Button_OnEvent(self, event, ...)
@@ -756,7 +763,7 @@ function TauntMasterMini_Button_OnShow(self)
 
     -- Show or hide the name label based on setting
     if self.name then
-        if TauntMasterMiniDB and TauntMasterMiniDB.showNames == false then
+        if TMM_Get('showNames') == false then
             self.name:SetText('')
             self.name:Hide()
         else
@@ -939,7 +946,7 @@ local function TMM_GetSpellIcon(spellName)
 end
 
 local function TauntMasterMini_UpdateCooldowns(button)
-    if not TauntMasterMiniDB or not TauntMasterMiniDB.showCooldowns then
+    if not TMM_Get('showCooldowns') then
         if button._cdFrameLeft  then button._cdFrameLeft:SetCooldown(0, 0)  end
         if button._cdFrameRight then button._cdFrameRight:SetCooldown(0, 0) end
         if button._cdIconLeft  then button._cdIconLeft:Hide()  end
@@ -1085,7 +1092,7 @@ local function TMM_CreateUnitButton(index)
     local parent = TauntMasterMini_Header or UIParent
     local name = string.format('TauntMasterMini_Button_%d', index)
     local btn = CreateFrame('Frame', name, parent)
-    btn:SetSize(TauntMasterMiniDB.width, TauntMasterMiniDB.height)
+    btn:SetSize(TMM_Get('width') or 75, TMM_Get('height') or 30)
     btn:EnableMouse(false)
 
     local hb = CreateFrame('StatusBar', name .. '_HealthBar', btn)
@@ -1350,7 +1357,7 @@ TMM_RebuildRoster = function()
     local parent = TauntMasterMini_Header or UIParent
 
     -- Hide when not in party/raid if option is enabled
-    if TauntMasterMiniDB.hideWhenSolo and not IsInGroup() then
+    if TMM_Get('hideWhenSolo') and not IsInGroup() then
         parent:Hide()
         return
     elseif not TauntMasterMiniDBChar.hideTM then
@@ -1360,7 +1367,7 @@ TMM_RebuildRoster = function()
     local units = {}
     local num = GetNumGroupMembers()
     local hideSelf = not TMM_showSelf
-    local filterDps = TauntMasterMiniDB.hideDpsInRaid and IsInRaid()
+    local filterDps = TMM_Get('hideDpsInRaid') and IsInRaid()
     if IsInRaid() and num > 0 then
         for i = 1, num do
             local raidUnit = 'raid' .. i
@@ -1382,10 +1389,10 @@ TMM_RebuildRoster = function()
         table.insert(units, 'player')
     end
 
-    local perCol = TauntMasterMiniDB.unitsPerColumn or 10
-    local maxCols = TauntMasterMiniDB.maxColumns or 4
-    local bw = TauntMasterMiniDB.width or 75
-    local bh = TauntMasterMiniDB.height or 30
+    local perCol = TMM_Get('unitsPerColumn') or 10
+    local maxCols = TMM_Get('maxColumns') or 4
+    local bw = TMM_Get('width') or 75
+    local bh = TMM_Get('height') or 30
 
     local needed = math.min(#units, perCol * maxCols)
 
@@ -1412,7 +1419,7 @@ TMM_RebuildRoster = function()
             topOffset = topOffset + DRAG_HANDLE_HEIGHT
         end
         -- Extra vertical space for cooldown icons below each bar (18px icon + 3px gap)
-        local cdExtra = (TauntMasterMiniDB.showCooldowns) and 21 or 0
+        local cdExtra = (TMM_Get('showCooldowns')) and 21 or 0
         btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + col * (bw + 8), -topOffset - row * (bh + 4 + cdExtra))
         btn:SetAttribute('unit', unit)
         TMM_ConfigureClickAction(btn, unit)
@@ -1423,7 +1430,7 @@ TMM_RebuildRoster = function()
     local cols = math.min(maxCols, math.max(1, math.ceil(needed / perCol)))
     local rows = math.min(perCol, needed)
     local handleExtra = (parent._dragHandle and parent._dragHandle:IsShown()) and DRAG_HANDLE_HEIGHT or 0
-    local cdExtra = (TauntMasterMiniDB.showCooldowns) and 21 or 0
+    local cdExtra = (TMM_Get('showCooldowns')) and 21 or 0
     parent:SetSize(10 + cols * bw + (cols - 1) * 8, 10 + rows * (bh + cdExtra) + (rows - 1) * 4 + handleExtra)
 end
 
@@ -1552,7 +1559,7 @@ local function TMM_GetChatChannel()
 end
 
 local function TMM_HandlePullEvent(unit)
-    if not TauntMasterMiniDB or not TauntMasterMiniDB.pullAlertEnabled then return end
+    if not TMM_Get('pullAlertEnabled') then return end
     if not unit or not UnitExists(unit) then return end
     if UnitIsUnit(unit, 'player') then return end       -- ignore ourselves
     if not IsInGroup() then return end                  -- must be grouped
@@ -1591,11 +1598,11 @@ local function TMM_HandlePullEvent(unit)
     -- this person is the first non-tank to initiate / gain aggro.
     if TMM_firstPullName == nil then
         TMM_firstPullName = name
-        if TauntMasterMiniDB.firstPullNotification then
+        if TMM_Get('firstPullNotification') then
             local flashMsg = '|cFFFF8800>> 1st PULL! <<|r\n|cFFFFFFFF' .. name .. '|r'
             TMM_ShowPullFlash(name, flashMsg)
             print(string.format('|cFFFF8800TauntMasterMini:|r 1st Pull by |cFFFFFFFF%s|r!', name))
-            if TauntMasterMiniDB.pullAlertPartyChat then
+            if TMM_Get('pullAlertPartyChat') then
                 local channel = TMM_GetChatChannel()
                 if channel then
                     SendChatMessage('1st Pull by ' .. name .. '!', channel)
@@ -1609,7 +1616,7 @@ local function TMM_HandlePullEvent(unit)
     TMM_ShowPullFlash(name)
     print(string.format('|cFFFF4400TauntMasterMini:|r |cFFFFFFFF%s|r pulled aggro!', name))
 
-    if TauntMasterMiniDB.pullAlertPartyChat then
+    if TMM_Get('pullAlertPartyChat') then
         local channel = TMM_GetChatChannel()
         if channel then
             SendChatMessage(name .. ' pulled aggro!', channel)
@@ -1721,9 +1728,9 @@ TMM_CreateOrInitUI = function()
         TMMOptionsMenu = f
 
         AddSlider('Button Width', 50, 200, 1, function()
-            return TauntMasterMiniDB.width or 75
+            return TMM_Get('width') or 75
         end, function(v)
-            TauntMasterMiniDB.width = v
+            TMM_Set('width', v)
             if InCombatLockdown() then
                 TauntMasterMini_Header._tmmPendingRebuild = true
             else
@@ -1732,9 +1739,9 @@ TMM_CreateOrInitUI = function()
         end)
 
         AddSlider('Button Height', 20, 60, 1, function()
-            return TauntMasterMiniDB.height or 30
+            return TMM_Get('height') or 30
         end, function(v)
-            TauntMasterMiniDB.height = v
+            TMM_Set('height', v)
             if InCombatLockdown() then
                 TauntMasterMini_Header._tmmPendingRebuild = true
             else
@@ -1743,9 +1750,9 @@ TMM_CreateOrInitUI = function()
         end)
 
         AddSlider('Units Per Column', 1, 20, 1, function()
-            return TauntMasterMiniDB.unitsPerColumn or 10
+            return TMM_Get('unitsPerColumn') or 10
         end, function(v)
-            TauntMasterMiniDB.unitsPerColumn = v
+            TMM_Set('unitsPerColumn', v)
             if InCombatLockdown() then
                 TauntMasterMini_Header._tmmPendingRebuild = true
             else
@@ -1754,9 +1761,9 @@ TMM_CreateOrInitUI = function()
         end)
 
         AddSlider('Max Columns', 1, 8, 1, function()
-            return TauntMasterMiniDB.maxColumns or 4
+            return TMM_Get('maxColumns') or 4
         end, function(v)
-            TauntMasterMiniDB.maxColumns = v
+            TMM_Set('maxColumns', v)
             if InCombatLockdown() then
                 TauntMasterMini_Header._tmmPendingRebuild = true
             else
@@ -1797,15 +1804,15 @@ TMM_CreateOrInitUI = function()
         end)
 
         AddCheck('Show Cooldowns', function()
-            return TauntMasterMiniDB.showCooldowns
+            return TMM_Get('showCooldowns')
         end, function(val)
-            TauntMasterMiniDB.showCooldowns = val
+            TMM_Set('showCooldowns', val)
         end)
 
         AddCheck('Show Player Names', function()
-            return TauntMasterMiniDB.showNames ~= false
+            return TMM_Get('showNames') ~= false
         end, function(val)
-            TauntMasterMiniDB.showNames = val
+            TMM_Set('showNames', val)
             -- Refresh all buttons immediately
             for _, btn in ipairs(TMMButtons) do
                 if btn:IsShown() then
@@ -1826,18 +1833,18 @@ TMM_CreateOrInitUI = function()
         end)
 
         AddCheck('Hide When Not In Party', function()
-            return TauntMasterMiniDB.hideWhenSolo or false
+            return TMM_Get('hideWhenSolo') or false
         end, function(val)
-            TauntMasterMiniDB.hideWhenSolo = val
+            TMM_Set('hideWhenSolo', val)
             if not InCombatLockdown() then
                 TMM_RebuildRoster()
             end
         end)
 
         AddCheck('Hide DPS In Raid  (show tanks & healers only)', function()
-            return TauntMasterMiniDB.hideDpsInRaid or false
+            return TMM_Get('hideDpsInRaid') or false
         end, function(val)
-            TauntMasterMiniDB.hideDpsInRaid = val
+            TMM_Set('hideDpsInRaid', val)
             if not InCombatLockdown() then
                 TMM_RebuildRoster()
             end
@@ -1851,9 +1858,9 @@ TMM_CreateOrInitUI = function()
 
         y = y - 6
         AddSlider('Skull Marker Size', 12, 40, 1, function()
-            return TauntMasterMiniDB.skullSize or 20
+            return TMM_Get('skullSize') or 20
         end, function(v)
-            TauntMasterMiniDB.skullSize = v
+            TMM_Set('skullSize', v)
             if TauntMasterMini_Header and TauntMasterMini_Header._skullBtn then
                 TauntMasterMini_Header._skullBtn:SetSize(v, v)
             end
@@ -1867,21 +1874,21 @@ TMM_CreateOrInitUI = function()
         y = y - 22
 
         AddCheck('Alert when non-tank pulls  (flash + local chat)', function()
-            return TauntMasterMiniDB.pullAlertEnabled ~= false
+            return TMM_Get('pullAlertEnabled') ~= false
         end, function(val)
-            TauntMasterMiniDB.pullAlertEnabled = val
+            TMM_Set('pullAlertEnabled', val)
         end)
 
         AddCheck('Show "1st Pull by ..." when someone initiates combat', function()
-            return TauntMasterMiniDB.firstPullNotification ~= false
+            return TMM_Get('firstPullNotification') ~= false
         end, function(val)
-            TauntMasterMiniDB.firstPullNotification = val
+            TMM_Set('firstPullNotification', val)
         end)
 
         AddCheck('Announce pull in party/instance chat  (/p or /i)', function()
-            return TauntMasterMiniDB.pullAlertPartyChat ~= false
+            return TMM_Get('pullAlertPartyChat') ~= false
         end, function(val)
-            TauntMasterMiniDB.pullAlertPartyChat = val
+            TMM_Set('pullAlertPartyChat', val)
         end)
 
         local close = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
@@ -1941,7 +1948,7 @@ TMM_CreateOrInitUI = function()
 
         local skullBtn = CreateFrame('Button', 'TMMSkullToggle', UIParent,
             'SecureActionButtonTemplate')
-        local skullSz = TauntMasterMiniDB and TauntMasterMiniDB.skullSize or 20
+        local skullSz = TMM_Get('skullSize') or 20
         skullBtn:SetSize(skullSz, skullSz)
         skullBtn:SetPoint('BOTTOM', header, 'TOP', 0, 2)
         skullBtn:SetFrameStrata(header:GetFrameStrata())
@@ -2018,16 +2025,19 @@ TMM_CreateOrInitUI = function()
                 TMM_UpdateLockState()
 
                 -- Apply saved frame size
-                if TauntMasterMiniDB.width and TauntMasterMiniDB.height then
+                local savedW = TMM_Get('width')
+                local savedH = TMM_Get('height')
+                if savedW and savedH then
                     for _, btn in ipairs(TMMButtons) do
-                        btn:SetWidth(TauntMasterMiniDB.width)
-                        btn:SetHeight(TauntMasterMiniDB.height)
+                        btn:SetWidth(savedW)
+                        btn:SetHeight(savedH)
                     end
                 end
 
                 -- Apply saved skull marker size
-                if self._skullBtn and TauntMasterMiniDB.skullSize then
-                    self._skullBtn:SetSize(TauntMasterMiniDB.skullSize, TauntMasterMiniDB.skullSize)
+                local savedSkull = TMM_Get('skullSize')
+                if self._skullBtn and savedSkull then
+                    self._skullBtn:SetSize(savedSkull, savedSkull)
                 end
 
                 -- Show/hide header based on saved preference
