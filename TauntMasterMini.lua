@@ -779,20 +779,45 @@ function TauntMasterMini_UpdateThreat(button)
     if not button.healthbar then return end
     local unit = button:GetAttribute('unit')
     if not unit or not UnitExists(unit) then
-        button.healthbar:SetStatusBarColor(0, 1, 0)
+        button.healthbar:SetStatusBarColor(0.45, 0.45, 0.45)
         return
     end
-    -- UnitThreatSituation returns tainted ("secret") values in combat.
-    -- GetThreatStatusColor and SetStatusBarColor are both C-side and can
-    -- consume tainted values.  Chain them directly without any Lua-side
-    -- comparison to avoid the "secret boolean/number" taint error.
+
+    -- Custom threat colour scheme:
+    --   Grey   = not in combat
+    --   Green  = in combat, no aggro
+    --   Yellow = losing or gaining aggro
+    --   Red    = full aggro (tanking securely)
+
+    -- UnitAffectingCombat is C-side and returns clean values.
+    if not UnitAffectingCombat(unit) then
+        button.healthbar:SetStatusBarColor(0.45, 0.45, 0.45)  -- Grey
+        return
+    end
+
     local status = UnitThreatSituation(unit)
     if status == nil then
-        -- nil is safe to test (not tainted); means no threat data
-        button.healthbar:SetStatusBarColor(0, 1, 0)
-    else
-        -- status is a tainted number; pass it straight to C-side functions
-        button.healthbar:SetStatusBarColor(GetThreatStatusColor(status))
+        -- nil is safe to compare (not tainted); means no threat data
+        button.healthbar:SetStatusBarColor(0, 0.8, 0)  -- Green
+        return
+    end
+
+    -- status is a tainted number; set via C-side GetThreatStatusColor,
+    -- then read back clean values and remap to our scheme.
+    button.healthbar:SetStatusBarColor(GetThreatStatusColor(status))
+    local r, g, b = button.healthbar:GetStatusBarColor()
+
+    -- GetThreatStatusColor returns:
+    --   status 0: ~(0.69, 1.0, 0)   green   → Green (no aggro)
+    --   status 1: ~(1.0, 1.0, 0.47) yellow  → Yellow (gaining)
+    --   status 2: ~(1.0, 0.6, 0)    orange  → Yellow (losing)
+    --   status 3: ~(1.0, 0, 0)      red     → Red (full aggro)
+    if r > 0.9 and g > 0.4 and g < 0.8 then
+        -- Orange (status 2) → remap to yellow
+        button.healthbar:SetStatusBarColor(1, 1, 0)
+    elseif r < 0.8 and g > 0.8 then
+        -- Green (status 0) → our green
+        button.healthbar:SetStatusBarColor(0, 0.8, 0)
     end
 end
 
