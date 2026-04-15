@@ -791,6 +791,17 @@ function TauntMasterMini_Button_OnShow(self)
     TauntMasterMini_UpdateIcons(self)
 end
 
+-- Taint-safe UnitIsUnit: WoW's UnitIsUnit returns a "secret" boolean
+-- in tainted contexts (after UnitThreatSituation). Testing it with 'if'
+-- triggers an error. This wrapper uses string comparison on UnitGUID
+-- which returns a clean string, not a tainted boolean.
+local function TMM_IsPlayer(unit)
+    if unit == 'player' then return true end
+    local playerGUID = UnitGUID('player')
+    local unitGUID = UnitGUID(unit)
+    return playerGUID and unitGUID and (playerGUID == unitGUID)
+end
+
 local function TMM_StopThreatFlash(button)
     if button._threatBorder then
         button._threatFlash = false
@@ -901,7 +912,7 @@ function TauntMasterMini_UpdateIcons(button)
         local role = UnitGroupRolesAssigned(unit)
         if not role or role == 'NONE' then
             -- Fall back to spec role for the player, default DPS for others
-            if UnitIsUnit(unit, 'player') then
+            if TMM_IsPlayer(unit) then
                 local spec = GetSpecialization()
                 if spec then
                     role = GetSpecializationRole(spec) or 'DAMAGER'
@@ -1012,7 +1023,7 @@ end
 local function TauntMasterMini_UpdateCooldowns(button)
     local unit = button:GetAttribute('unit')
     -- Only show spell cooldown icons on the player's own (tank) bar
-    local showIcons = TMM_Get('showCooldowns') and unit and UnitIsUnit(unit, 'player')
+    local showIcons = TMM_Get('showCooldowns') and unit and TMM_IsPlayer(unit)
     if not showIcons then
         if button._cdFrameLeft  then button._cdFrameLeft:SetCooldown(0, 0)  end
         if button._cdFrameRight then button._cdFrameRight:SetCooldown(0, 0) end
@@ -1478,7 +1489,7 @@ TMM_RebuildRoster = function()
     if IsInRaid() and num > 0 then
         for i = 1, num do
             local raidUnit = 'raid' .. i
-            if not (hideSelf and UnitIsUnit(raidUnit, 'player')) then
+            if not (hideSelf and TMM_IsPlayer(raidUnit)) then
                 if filterDps then
                     local role = UnitGroupRolesAssigned(raidUnit)
                     if role == 'TANK' or role == 'HEALER' then
@@ -1541,7 +1552,7 @@ TMM_RebuildRoster = function()
         local cellW = bh + 2 + bw + 2 + bh  -- classIcon + gap + bar + gap + roleIcon
         btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + bh + 2 + col * (cellW + 6), -topOffset - yOff)
         -- Advance Y: bar height + gap, plus cooldown space only for player
-        local cdExtra = (showCD and UnitIsUnit(unit, 'player')) and 21 or 0
+        local cdExtra = (showCD and TMM_IsPlayer(unit)) and 21 or 0
         colY[col] = yOff + bh + 4 + cdExtra
         if colY[col] > totalH then totalH = colY[col] end
         btn:SetAttribute('unit', unit)
@@ -1683,7 +1694,7 @@ end
 local function TMM_HandlePullEvent(unit)
     if not TMM_Get('pullAlertEnabled') then return end
     if not unit or not UnitExists(unit) then return end
-    if UnitIsUnit(unit, 'player') then return end       -- ignore ourselves
+    if unit == 'player' then return end                 -- ignore ourselves
     if not IsInGroup() then return end                  -- must be grouped
     local role = UnitGroupRolesAssigned(unit)
     if role == 'TANK' then return end                   -- ignore other tanks
