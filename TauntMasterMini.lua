@@ -1624,7 +1624,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 730)
+        f:SetSize(360, 800)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1849,6 +1849,7 @@ TMM_CreateOrInitUI = function()
             TMM_SetLocked(val)
         end)
 
+        y = y - 6
         AddSlider('Skull Marker Size', 12, 40, 1, function()
             return TauntMasterMiniDB.skullSize or 20
         end, function(v)
@@ -1859,7 +1860,7 @@ TMM_CreateOrInitUI = function()
         end)
 
         -- Pull Alert section
-        y = y - 10
+        y = y - 14
         local pullHeader = f:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
         pullHeader:SetPoint('TOPLEFT', 16, y)
         pullHeader:SetText('|cFFFF9900Pull Alerts|r')
