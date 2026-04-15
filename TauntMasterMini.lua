@@ -96,15 +96,32 @@ local function TMM_EnsureDefaults()
         TauntMasterMiniDBChar.hideTM = false
     end
 
+    -- Per-character spell settings: migrate from account-wide if needed
+    if TauntMasterMiniDBChar.leftClickSpell == nil then
+        TauntMasterMiniDBChar.leftClickSpell = TauntMasterMiniDB.leftClickSpell or ''
+    end
+    if TauntMasterMiniDBChar.rightClickSpell == nil then
+        TauntMasterMiniDBChar.rightClickSpell = TauntMasterMiniDB.rightClickSpell or ''
+    end
+
     local defaultTaunt = TMM_GetTauntSpell()
     if defaultTaunt then
-        if not TauntMasterMiniDB.leftClickSpell or TauntMasterMiniDB.leftClickSpell == '' then
-            TauntMasterMiniDB.leftClickSpell = defaultTaunt
+        if not TauntMasterMiniDBChar.leftClickSpell or TauntMasterMiniDBChar.leftClickSpell == '' then
+            TauntMasterMiniDBChar.leftClickSpell = defaultTaunt
         end
-        if not TauntMasterMiniDB.rightClickSpell or TauntMasterMiniDB.rightClickSpell == '' then
-            TauntMasterMiniDB.rightClickSpell = defaultTaunt
+        if not TauntMasterMiniDBChar.rightClickSpell or TauntMasterMiniDBChar.rightClickSpell == '' then
+            TauntMasterMiniDBChar.rightClickSpell = defaultTaunt
         end
     end
+end
+
+-- Accessor helpers for per-character spell settings
+local function TMM_GetLeftSpell()
+    return TauntMasterMiniDBChar and TauntMasterMiniDBChar.leftClickSpell or ''
+end
+
+local function TMM_GetRightSpell()
+    return TauntMasterMiniDBChar and TauntMasterMiniDBChar.rightClickSpell or ''
 end
 
 local function TMM_MinimapSettings()
@@ -932,7 +949,7 @@ local function TauntMasterMini_UpdateCooldowns(button)
 
     local now = GetTime()
 
-    local leftSpell = TauntMasterMiniDB.leftClickSpell
+    local leftSpell = TMM_GetLeftSpell()
     if not leftSpell or leftSpell == '' then leftSpell = TMM_GetTauntSpell() end
 
     -- Update left spell icon texture
@@ -961,7 +978,7 @@ local function TauntMasterMini_UpdateCooldowns(button)
         end
     end
 
-    local rightSpell = TauntMasterMiniDB.rightClickSpell
+    local rightSpell = TMM_GetRightSpell()
     if not rightSpell or rightSpell == '' then rightSpell = TMM_GetTauntSpell() end
 
     -- Update right spell icon texture
@@ -1003,7 +1020,7 @@ local function TauntMasterMini_UpdateRange(button)
     end
 
     -- Determine primary spell and the unit to range-check against
-    local spell = TauntMasterMiniDB and TauntMasterMiniDB.leftClickSpell
+    local spell = TMM_GetLeftSpell()
     if not spell or spell == '' then spell = TMM_GetTauntSpell() end
     if not spell then
         if button._oorOverlay then button._oorOverlay:Hide() end
@@ -1301,8 +1318,8 @@ TMM_ConfigureClickAction = function(btn, unit)
 
     click:SetAttribute('pressAndHoldAction', false)
 
-    local leftMacro = buildMacro(unit, TauntMasterMiniDB and TauntMasterMiniDB.leftClickSpell)
-    local rightMacro = buildMacro(unit, TauntMasterMiniDB and TauntMasterMiniDB.rightClickSpell)
+    local leftMacro = buildMacro(unit, TMM_GetLeftSpell())
+    local rightMacro = buildMacro(unit, TMM_GetRightSpell())
 
     click:SetAttribute('type', 'macro')
     click:SetAttribute('type1', 'macro')
@@ -1748,9 +1765,10 @@ TMM_CreateOrInitUI = function()
         end)
 
         f._leftSpellBtn = AddSpellDropdown('Left Click Spell', function()
-            return TauntMasterMiniDB.leftClickSpell or ''
+            return TMM_GetLeftSpell()
         end, function(val)
-            TauntMasterMiniDB.leftClickSpell = val
+            TauntMasterMiniDBChar.leftClickSpell = val
+            TMM_spellIconCache = {}
             if InCombatLockdown() then
                 TauntMasterMini_Header._tmmPendingRebuild = true
             else
@@ -1759,9 +1777,10 @@ TMM_CreateOrInitUI = function()
         end)
 
         f._rightSpellBtn = AddSpellDropdown('Right Click Spell', function()
-            return TauntMasterMiniDB.rightClickSpell or ''
+            return TMM_GetRightSpell()
         end, function(val)
-            TauntMasterMiniDB.rightClickSpell = val
+            TauntMasterMiniDBChar.rightClickSpell = val
+            TMM_spellIconCache = {}
             if InCombatLockdown() then
                 TauntMasterMini_Header._tmmPendingRebuild = true
             else
