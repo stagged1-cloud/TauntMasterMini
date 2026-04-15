@@ -869,10 +869,22 @@ local function TMM_GetCDDuration(spell)
     return spell and TMM_KNOWN_CD[spell:lower()] or TMM_DEFAULT_CD
 end
 
+-- Helper: get spell icon texture for a spell name
+local function TMM_GetSpellIcon(spellName)
+    if not spellName or spellName == '' then return nil end
+    if C_Spell and C_Spell.GetSpellInfo then
+        local info = C_Spell.GetSpellInfo(spellName)
+        if info and info.iconID then return info.iconID end
+    end
+    return nil
+end
+
 local function TauntMasterMini_UpdateCooldowns(button)
     if not TauntMasterMiniDB or not TauntMasterMiniDB.showCooldowns then
         if button._cdFrameLeft  then button._cdFrameLeft:SetCooldown(0, 0)  end
         if button._cdFrameRight then button._cdFrameRight:SetCooldown(0, 0) end
+        if button._cdIconLeft  then button._cdIconLeft:Hide()  end
+        if button._cdIconRight then button._cdIconRight:Hide() end
         return
     end
 
@@ -880,6 +892,18 @@ local function TauntMasterMini_UpdateCooldowns(button)
 
     local leftSpell = TauntMasterMiniDB.leftClickSpell
     if not leftSpell or leftSpell == '' then leftSpell = TMM_GetTauntSpell() end
+
+    -- Update left spell icon texture
+    if button._cdIconLeft then
+        local icon = TMM_GetSpellIcon(leftSpell)
+        if icon then
+            button._cdIconLeft._iconTex:SetTexture(icon)
+            button._cdIconLeft:Show()
+        else
+            button._cdIconLeft:Hide()
+        end
+    end
+
     if button._cdFrameLeft then
         local start = TMM_GetCDStart(leftSpell)
         if start then
@@ -897,6 +921,18 @@ local function TauntMasterMini_UpdateCooldowns(button)
 
     local rightSpell = TauntMasterMiniDB.rightClickSpell
     if not rightSpell or rightSpell == '' then rightSpell = TMM_GetTauntSpell() end
+
+    -- Update right spell icon texture
+    if button._cdIconRight then
+        local icon = TMM_GetSpellIcon(rightSpell)
+        if icon then
+            button._cdIconRight._iconTex:SetTexture(icon)
+            button._cdIconRight:Show()
+        else
+            button._cdIconRight:Hide()
+        end
+    end
+
     if button._cdFrameRight then
         local start = TMM_GetCDStart(rightSpell)
         if start then
@@ -1052,9 +1088,11 @@ local function TMM_CreateUnitButton(index)
     oorOverlay:Hide()
     btn._oorOverlay = oorOverlay
 
-    -- Cooldown widgets for left-click and right-click spells
-    -- Uses bare Cooldown widget (NO CooldownFrameTemplate) to avoid all
-    -- inherited green-square textures.  Must set swipe texture manually.
+    -- Spell cooldown icons BELOW the bar.
+    -- Two square icons: left-click spell (left) and right-click spell (right).
+    -- Each has a spell icon texture with a cooldown sweep overlay.
+    local CD_ICON_SIZE = 18
+
     local function SetupCooldownFrame(cd)
         cd:SetDrawEdge(false)
         cd:SetDrawBling(false)
@@ -1065,17 +1103,35 @@ local function TMM_CreateUnitButton(index)
         cd:SetReverse(false)
     end
 
-    local cdFrameLeft = CreateFrame('Cooldown', name .. '_CDLeft', btn)
-    cdFrameLeft:SetPoint('TOPLEFT', btn, 'TOPLEFT', 0, 0)
-    cdFrameLeft:SetPoint('BOTTOMRIGHT', btn, 'BOTTOM', 0, 0)
-    cdFrameLeft:SetFrameLevel(btn:GetFrameLevel() + 2)
+    -- Left-click spell icon + cooldown
+    local cdIconLeft = CreateFrame('Frame', name .. '_CDIconLeft', btn)
+    cdIconLeft:SetSize(CD_ICON_SIZE, CD_ICON_SIZE)
+    cdIconLeft:SetPoint('TOPLEFT', btn, 'BOTTOMLEFT', 2, -1)
+    local cdIconLeftTex = cdIconLeft:CreateTexture(nil, 'ARTWORK')
+    cdIconLeftTex:SetAllPoints()
+    cdIconLeftTex:SetTexture('Interface/Icons/INV_Misc_QuestionMark')
+    cdIconLeft._iconTex = cdIconLeftTex
+    btn._cdIconLeft = cdIconLeft
+
+    local cdFrameLeft = CreateFrame('Cooldown', name .. '_CDLeft', cdIconLeft)
+    cdFrameLeft:SetAllPoints(cdIconLeft)
+    cdFrameLeft:SetFrameLevel(cdIconLeft:GetFrameLevel() + 1)
     SetupCooldownFrame(cdFrameLeft)
     btn._cdFrameLeft = cdFrameLeft
 
-    local cdFrameRight = CreateFrame('Cooldown', name .. '_CDRight', btn)
-    cdFrameRight:SetPoint('TOPLEFT', btn, 'TOP', 0, 0)
-    cdFrameRight:SetPoint('BOTTOMRIGHT', btn, 'BOTTOMRIGHT', 0, 0)
-    cdFrameRight:SetFrameLevel(btn:GetFrameLevel() + 2)
+    -- Right-click spell icon + cooldown
+    local cdIconRight = CreateFrame('Frame', name .. '_CDIconRight', btn)
+    cdIconRight:SetSize(CD_ICON_SIZE, CD_ICON_SIZE)
+    cdIconRight:SetPoint('LEFT', cdIconLeft, 'RIGHT', 2, 0)
+    local cdIconRightTex = cdIconRight:CreateTexture(nil, 'ARTWORK')
+    cdIconRightTex:SetAllPoints()
+    cdIconRightTex:SetTexture('Interface/Icons/INV_Misc_QuestionMark')
+    cdIconRight._iconTex = cdIconRightTex
+    btn._cdIconRight = cdIconRight
+
+    local cdFrameRight = CreateFrame('Cooldown', name .. '_CDRight', cdIconRight)
+    cdFrameRight:SetAllPoints(cdIconRight)
+    cdFrameRight:SetFrameLevel(cdIconRight:GetFrameLevel() + 1)
     SetupCooldownFrame(cdFrameRight)
     btn._cdFrameRight = cdFrameRight
 
@@ -1275,7 +1331,9 @@ TMM_RebuildRoster = function()
         if parent._dragHandle and parent._dragHandle:IsShown() then
             topOffset = topOffset + DRAG_HANDLE_HEIGHT
         end
-        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + col * (bw + 8), -topOffset - row * (bh + 4))
+        -- Extra vertical space for cooldown icons below each bar (18px icon + 3px gap)
+        local cdExtra = (TauntMasterMiniDB.showCooldowns) and 21 or 0
+        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + col * (bw + 8), -topOffset - row * (bh + 4 + cdExtra))
         btn:SetAttribute('unit', unit)
         TMM_ConfigureClickAction(btn, unit)
         btn:Show()
@@ -1285,7 +1343,8 @@ TMM_RebuildRoster = function()
     local cols = math.min(maxCols, math.max(1, math.ceil(needed / perCol)))
     local rows = math.min(perCol, needed)
     local handleExtra = (parent._dragHandle and parent._dragHandle:IsShown()) and DRAG_HANDLE_HEIGHT or 0
-    parent:SetSize(10 + cols * bw + (cols - 1) * 8, 10 + rows * bh + (rows - 1) * 4 + handleExtra)
+    local cdExtra = (TauntMasterMiniDB.showCooldowns) and 21 or 0
+    parent:SetSize(10 + cols * bw + (cols - 1) * 8, 10 + rows * (bh + cdExtra) + (rows - 1) * 4 + handleExtra)
 end
 
 TMM_DebugDump = function()
