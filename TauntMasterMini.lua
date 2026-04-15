@@ -1654,12 +1654,19 @@ TMM_CreateOrInitUI = function()
         title:SetText('TauntMasterMini Options')
 
 
+        -- Track all checkboxes and sliders so we can refresh them after
+        -- SavedVariables are loaded (ADDON_LOADED fires after UI creation).
+        f._tmmChecks = {}
+        f._tmmSliders = {}
+
         local y = -50
         local function AddCheck(label, get, set)
             local cb = CreateFrame('CheckButton', nil, f, 'UICheckButtonTemplate')
             cb.text:SetText(label)
             cb:SetPoint('TOPLEFT', 16, y)
             cb:SetChecked(get())
+            cb._tmmGetter = get
+            table.insert(f._tmmChecks, cb)
             cb:SetScript('OnClick', function(self)
                 if InCombatLockdown() then
                     print('TauntMasterMini: Cannot change this during combat.')
@@ -1679,6 +1686,8 @@ TMM_CreateOrInitUI = function()
             s:SetValueStep(step)
             s:SetObeyStepOnDrag(true)
             s:SetValue(get())
+            s._tmmGetter = get
+            table.insert(f._tmmSliders, s)
             s.Text:SetText(label)
             s.Low:SetText(tostring(minV))
             s.High:SetText(tostring(maxV))
@@ -2047,13 +2056,19 @@ TMM_CreateOrInitUI = function()
                     self:Show()
                 end
 
-                -- Refresh option dropdown text to match loaded SavedVariables
+                -- Refresh option panel controls to match loaded SavedVariables
                 if TMMOptionsMenu then
                     if TMMOptionsMenu._leftSpellBtn and TMMOptionsMenu._leftSpellBtn.refreshText then
                         TMMOptionsMenu._leftSpellBtn:refreshText()
                     end
                     if TMMOptionsMenu._rightSpellBtn and TMMOptionsMenu._rightSpellBtn.refreshText then
                         TMMOptionsMenu._rightSpellBtn:refreshText()
+                    end
+                    for _, cb in ipairs(TMMOptionsMenu._tmmChecks or {}) do
+                        if cb._tmmGetter then cb:SetChecked(cb._tmmGetter()) end
+                    end
+                    for _, s in ipairs(TMMOptionsMenu._tmmSliders or {}) do
+                        if s._tmmGetter then s:SetValue(s._tmmGetter()) end
                     end
                 end
 
