@@ -791,11 +791,19 @@ function TauntMasterMini_Button_OnShow(self)
     TauntMasterMini_UpdateIcons(self)
 end
 
+local function TMM_StopThreatFlash(button)
+    if button._threatBorder then
+        button._threatFlash = false
+        button._threatBorder:SetBackdropBorderColor(1, 0, 0, 0)
+    end
+end
+
 function TauntMasterMini_UpdateThreat(button)
     if not button.healthbar then return end
     local unit = button:GetAttribute('unit')
     if not unit or not UnitExists(unit) then
         button.healthbar:SetStatusBarColor(0, 0.8, 0)
+        TMM_StopThreatFlash(button)
         return
     end
 
@@ -808,6 +816,7 @@ function TauntMasterMini_UpdateThreat(button)
         else
             button.healthbar:SetStatusBarColor(0, 0, 0)
         end
+        TMM_StopThreatFlash(button)
         return
     end
 
@@ -819,6 +828,7 @@ function TauntMasterMini_UpdateThreat(button)
     -- UnitAffectingCombat is C-side and returns clean values.
     if not UnitAffectingCombat(unit) then
         button.healthbar:SetStatusBarColor(0, 0.8, 0)  -- Green
+        TMM_StopThreatFlash(button)
         return
     end
 
@@ -826,6 +836,7 @@ function TauntMasterMini_UpdateThreat(button)
     if status == nil then
         -- nil is safe to compare (not tainted); means no threat data
         button.healthbar:SetStatusBarColor(0, 0.8, 0)  -- Green
+        TMM_StopThreatFlash(button)
         return
     end
 
@@ -840,18 +851,34 @@ function TauntMasterMini_UpdateThreat(button)
     --   status 1: ~(1.0, 1.0, 0.47) yellow  → Yellow
     --   status 2: ~(1.0, 0.6, 0)    orange  → Yellow
     --   status 3: ~(1.0, 0, 0)      red     → Red
+    local flashR, flashG, flashB, doFlash
     if r > 0.9 and g < 0.15 then
-        -- Red (status 3) → Red
+        -- Red (status 3) → Red — flash red border
         button.healthbar:SetStatusBarColor(1, 0, 0)
+        flashR, flashG, flashB, doFlash = 1, 0, 0, true
     elseif r > 0.9 and g > 0.4 and g < 0.8 then
-        -- Orange (status 2) → Yellow
+        -- Orange (status 2) → Yellow — flash yellow border
         button.healthbar:SetStatusBarColor(1, 1, 0)
+        flashR, flashG, flashB, doFlash = 1, 1, 0, true
     elseif r > 0.9 and g > 0.8 then
-        -- Yellow (status 1) → Yellow
+        -- Yellow (status 1) → Yellow — flash yellow border
         button.healthbar:SetStatusBarColor(1, 1, 0)
+        flashR, flashG, flashB, doFlash = 1, 1, 0, true
     else
         -- Green (status 0) or anything unexpected → Green
         button.healthbar:SetStatusBarColor(0, 0.8, 0)
+        doFlash = false
+    end
+
+    if button._threatBorder then
+        button._threatFlash = doFlash
+        if doFlash then
+            button._threatBorderR = flashR
+            button._threatBorderG = flashG
+            button._threatBorderB = flashB
+        else
+            button._threatBorder:SetBackdropBorderColor(1, 0, 0, 0)
+        end
     end
 end
 
@@ -1096,6 +1123,17 @@ function TauntMasterMini_Button_OnUpdate(self, elapsed)
     TauntMasterMini_UpdateIcons(self)
     TauntMasterMini_UpdateCooldowns(self)
     TauntMasterMini_UpdateRange(self)
+
+    -- Pulse threat border alpha when flash is active
+    if self._threatFlash and self._threatBorder then
+        local t = GetTime() * 3  -- 3 Hz pulse
+        local alpha = 0.5 + 0.5 * math.sin(t * math.pi * 2)
+        self._threatBorder:SetBackdropBorderColor(
+            self._threatBorderR or 1,
+            self._threatBorderG or 0,
+            self._threatBorderB or 0,
+            alpha)
+    end
 end
 
 -- Roster / button creation -------------------------------------------------
@@ -1160,6 +1198,21 @@ local function TMM_CreateUnitButton(index)
     friendlyIcon:SetTexture('Interface/AddOns/TauntMasterMini/tm_friendly_icon8')
     friendlyIcon:Hide()
     btn.healicon = friendlyIcon
+
+    -- Flashing threat border: pulses when unit has high threat (yellow/red)
+    local border = CreateFrame('Frame', name .. '_ThreatBorder', btn, BackdropTemplateMixin and 'BackdropTemplate')
+    border:SetPoint('TOPLEFT', btn, 'TOPLEFT', -2, 2)
+    border:SetPoint('BOTTOMRIGHT', btn, 'BOTTOMRIGHT', 2, -2)
+    border:SetBackdrop({
+        edgeFile = 'Interface/Tooltips/UI-Tooltip-Border',
+        edgeSize = 8,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    border:SetBackdropBorderColor(1, 0, 0, 0)
+    border:SetFrameLevel(btn:GetFrameLevel() + 3)
+    border:EnableMouse(false)
+    btn._threatBorder = border
+    btn._threatFlash = false
 
     -- Out-of-range overlay: semi-transparent red tint shown when the
     -- spell target is out of range.  Sits above the health bar but below
