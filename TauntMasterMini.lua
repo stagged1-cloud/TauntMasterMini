@@ -45,6 +45,7 @@ local DEFAULTS = {
     skullSize = 20,
     hideWhenSolo = false,
     hideDpsInRaid = false,
+    useClassColours = false,
     pullAlertEnabled = true,
     pullAlertPartyChat = true,
     firstPullNotification = true,
@@ -744,8 +745,9 @@ function TauntMasterMini_Button_OnShow(self)
     -- Set class-colour background and class icon
     local class = select(2, UnitClass(unit))
     if class then
-        if self._classBg then
-            self._classBg:SetColorTexture(0, 0, 0, 0.85)
+        local color = RAID_CLASS_COLORS[class]
+        if color and self._classBg then
+            self._classBg:SetColorTexture(color.r * 0.3, color.g * 0.3, color.b * 0.3, 0.85)
         end
         if self._classIcon and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class] then
             self._classIcon:SetTexCoord(unpack(CLASS_ICON_TCOORDS[class]))
@@ -753,7 +755,7 @@ function TauntMasterMini_Button_OnShow(self)
         end
     else
         if self._classBg then
-            self._classBg:SetColorTexture(0, 0, 0, 0.85)
+            self._classBg:SetColorTexture(0.15, 0.15, 0.15, 0.8)
         end
         if self._classIcon then
             self._classIcon:Hide()
@@ -797,7 +799,19 @@ function TauntMasterMini_UpdateThreat(button)
         return
     end
 
-    -- Custom threat colour scheme:
+    -- Class colour mode: bar colour is always the unit's class colour
+    if TMM_Get('useClassColours') then
+        local class = select(2, UnitClass(unit))
+        local color = class and RAID_CLASS_COLORS[class]
+        if color then
+            button.healthbar:SetStatusBarColor(color.r, color.g, color.b)
+        else
+            button.healthbar:SetStatusBarColor(0.5, 0.5, 0.5)
+        end
+        return
+    end
+
+    -- Threat colour scheme:
     --   Green  = no aggro / not in combat
     --   Yellow = losing or gaining aggro
     --   Red    = full aggro (tanking securely)
@@ -1824,6 +1838,17 @@ TMM_CreateOrInitUI = function()
             TMM_Set('showCooldowns', val)
         end)
 
+        AddCheck('Use Class Colours on Bars', function()
+            return TMM_Get('useClassColours')
+        end, function(val)
+            TMM_Set('useClassColours', val)
+            for _, btn in ipairs(TMMButtons) do
+                if btn:IsShown() then
+                    TauntMasterMini_UpdateThreat(btn)
+                end
+            end
+        end)
+
         AddCheck('Show Player Names', function()
             return TMM_Get('showNames') ~= false
         end, function(val)
@@ -1927,6 +1952,7 @@ TMM_CreateOrInitUI = function()
             edgeSize = 12,
             insets = { left = 3, right = 3, top = 3, bottom = 3 },
         })
+        header:SetBackdropColor(0, 0, 0, 0.9)
 
         local r, g, b, a = header:GetBackdropBorderColor()
         header._tmmDefaultBorderColor = { r, g, b, a }
