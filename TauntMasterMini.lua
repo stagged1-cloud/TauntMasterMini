@@ -1180,10 +1180,11 @@ local function TMM_CreateUnitButton(index)
     label:SetText('-')
     btn.name = label
 
-    -- Role icon: shows Tank, Healer, or DPS icon based on assigned role
+    -- Role icon to the right of the bar, sized to match bar height
     local roleIcon = btn:CreateTexture(name .. '_TM_Role_Icon', 'OVERLAY')
-    roleIcon:SetSize(16, 16)
-    roleIcon:SetPoint('LEFT', btn, 'LEFT', 20, 0)
+    local roleSize = (TMM_Get('height') or 30)
+    roleIcon:SetSize(roleSize, roleSize)
+    roleIcon:SetPoint('LEFT', btn, 'RIGHT', 2, 0)
     roleIcon:SetTexture('Interface\\LFGFrame\\UI-LFG-ICON-ROLES')
     if ROLE_ICON_TCOORDS and ROLE_ICON_TCOORDS.TANK then
         roleIcon:SetTexCoord(unpack(ROLE_ICON_TCOORDS.TANK))
@@ -1479,6 +1480,9 @@ TMM_RebuildRoster = function()
         if TMMButtons[i]._classIcon then
             TMMButtons[i]._classIcon:SetSize(bh, bh)
         end
+        if TMMButtons[i]._roleIcon then
+            TMMButtons[i]._roleIcon:SetSize(bh, bh)
+        end
     end
 
     for i = needed + 1, #TMMButtons do
@@ -1502,8 +1506,9 @@ TMM_RebuildRoster = function()
         local col = math.floor((i - 1) / perCol)
         if not colY[col] then colY[col] = 0 end
         local yOff = colY[col]
-        -- Offset right by bar height + gap to make room for class icon on the left
-        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + bh + 2 + col * (bw + bh + 10), -topOffset - yOff)
+        -- Offset right by bar height + gap for class icon (left) and role icon (right)
+        local cellW = bh + 2 + bw + 2 + bh  -- classIcon + gap + bar + gap + roleIcon
+        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + bh + 2 + col * (cellW + 6), -topOffset - yOff)
         -- Advance Y: bar height + gap, plus cooldown space only for player
         local cdExtra = (showCD and UnitIsUnit(unit, 'player')) and 21 or 0
         colY[col] = yOff + bh + 4 + cdExtra
@@ -1516,8 +1521,8 @@ TMM_RebuildRoster = function()
 
     local cols = math.min(maxCols, math.max(1, math.ceil(needed / perCol)))
     local handleExtra = (parent._dragHandle and parent._dragHandle:IsShown()) and DRAG_HANDLE_HEIGHT or 0
-    local colWidth = bw + bh + 10  -- bar + class icon + gap
-    parent:SetSize(10 + cols * colWidth, 10 + totalH + handleExtra)
+    local cellW = bh + 2 + bw + 2 + bh  -- classIcon + gap + bar + gap + roleIcon
+    parent:SetSize(10 + cols * (cellW + 6), 10 + totalH + handleExtra)
 end
 
 TMM_DebugDump = function()
