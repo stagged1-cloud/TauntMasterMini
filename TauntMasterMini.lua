@@ -44,6 +44,7 @@ local DEFAULTS = {
     showNames = true,
     skullSize = 20,
     hideWhenSolo = false,
+    hideDpsInRaid = false,
     pullAlertEnabled = true,
     pullAlertPartyChat = true,
     firstPullNotification = true,
@@ -1342,10 +1343,19 @@ TMM_RebuildRoster = function()
     local units = {}
     local num = GetNumGroupMembers()
     local hideSelf = not TMM_showSelf
+    local filterDps = TauntMasterMiniDB.hideDpsInRaid and IsInRaid()
     if IsInRaid() and num > 0 then
         for i = 1, num do
-            if not (hideSelf and UnitIsUnit('raid' .. i, 'player')) then
-                table.insert(units, 'raid' .. i)
+            local raidUnit = 'raid' .. i
+            if not (hideSelf and UnitIsUnit(raidUnit, 'player')) then
+                if filterDps then
+                    local role = UnitGroupRolesAssigned(raidUnit)
+                    if role == 'TANK' or role == 'HEALER' then
+                        table.insert(units, raidUnit)
+                    end
+                else
+                    table.insert(units, raidUnit)
+                end
             end
         end
     elseif IsInGroup() and num > 0 then
@@ -1597,7 +1607,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 700)
+        f:SetSize(360, 730)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1800,6 +1810,15 @@ TMM_CreateOrInitUI = function()
             return TauntMasterMiniDB.hideWhenSolo or false
         end, function(val)
             TauntMasterMiniDB.hideWhenSolo = val
+            if not InCombatLockdown() then
+                TMM_RebuildRoster()
+            end
+        end)
+
+        AddCheck('Hide DPS In Raid  (show tanks & healers only)', function()
+            return TauntMasterMiniDB.hideDpsInRaid or false
+        end, function(val)
+            TauntMasterMiniDB.hideDpsInRaid = val
             if not InCombatLockdown() then
                 TMM_RebuildRoster()
             end
