@@ -1,0 +1,180 @@
+================================================================================
+              TauntMasterMini v6.6.0 - Instructions & Reference
+              Updated for WoW Midnight Pre-Patch 12.0.0
+================================================================================
+
+
+#####  Installation  #####
+
+Extract the TauntMasterMini folder into:
+   World of Warcraft/_retail_/Interface/AddOns/
+
+Restart WoW or type /reload in-game.
+Type /tm to open the options menu.
+
+
+#####  What It Does  #####
+
+TauntMasterMini is a threat-management addon for tanks.  It displays a
+compact frame with one bar per party or raid member.  Each bar shows:
+
+  - Health (status bar)
+  - Threat level (bar color: green/yellow/orange/red)
+  - Class-colored player name
+  - Tank role icon (shield)
+  - Friendly-target warning icon
+  - Cooldown sweeps for your left-click and right-click spells
+  - Red tint when the spell target is out of range
+
+Above the bar header is a small skull icon.  Click it to place (or remove)
+a skull raid marker on your current target.  The icon lights up when a skull
+is active and dims when removed or when you switch targets.
+
+Click a bar to cast your configured spell:
+  Left-click  = primary spell (default: your class taunt)
+  Right-click = secondary spell (configurable)
+
+Hostile spells (taunts, damage) are cast on the group member's hostile
+target automatically — you never need to manually switch targets.
+Friendly spells (blessings, heals) are cast directly on the group member.
+
+
+#####  Slash Commands  #####
+
+  /tm                    Open options menu
+  /TauntMasterMini       Open options menu
+  /tm show               Show the frame
+  /tm hide               Hide the frame
+  /tm toggle             Toggle frame visibility
+  /tm lock               Lock frame position
+  /tm unlock             Unlock frame position
+  /tm spells             Full spell diagnostic (API checks, spellbook dump,
+                         flyouts, talents, final filtered list)
+  /tm debug              Print each button's unit and macro text
+
+
+#####  Options Menu  #####
+
+Open with /tm or left-click the minimap icon:
+
+  Button Width ......... Horizontal bar size (50-200 px)
+  Button Height ........ Vertical bar size (20-60 px)
+  Units Per Column ..... Bars per column before wrapping (1-20)
+  Max Columns .......... Maximum number of columns (1-8)
+  Left Click Spell ..... Choose from your full spellbook
+  Right Click Spell .... Choose from your full spellbook
+  Show Minimap Icon .... Toggle the minimap button
+  Show Cooldowns ....... Toggle cooldown sweep overlays
+  Show Player Names .... Toggle class-colored names on bars
+  Show Self ............ Hide your own button (session-only, resets on reload)
+  Lock Frame ........... Lock/unlock position (green border = unlocked)
+
+  --- Pull Alerts ---
+  Alert when non-tank pulls ......... Flash + local message (on by default)
+  Show "1st Pull by ..." ............ Distinct first-pull notification (on by default)
+  Announce in party/instance chat ... Broadcast pull to group chat (on by default)
+
+
+#####  Spell Picker  #####
+
+The spell dropdown scans your entire spellbook:
+  - All spellbook tabs (skips guild perks and off-spec)
+  - Flyouts (Blessings, Portals, etc.)
+  - Active talent tree spells
+  - Action bar spells (supplementary)
+  - Class default taunt as fallback
+
+Only combat-relevant spells appear: must be harmful, helpful, or have range
+(catches dual-purpose spells like Death Coil), non-passive, and not on the
+blocklist (Fishing, Cooking, Mining, Skinning, etc.).
+
+
+#####  Visual Indicators  #####
+
+Threat colors on health bars:
+  Green  = No threat
+  Yellow = High threat (about to pull aggro)
+  Orange = Has aggro but losing it
+  Red    = Tanking securely
+
+Cooldown overlays:
+  Left half  = left-click spell cooldown (dark clock sweep)
+  Right half = right-click spell cooldown
+
+Out-of-range:
+  Red tint overlay appears when the spell target is beyond range.
+  For hostile spells, checks range to group member's target.
+  For friendly spells, checks range to the group member.
+
+Icons:
+  Shield icon (left side)  = player is assigned Tank role
+  Friendly icon (right)    = player is targeting a friendly unit
+
+Skull marker toggle:
+  Small skull icon above the bar header.
+  Click = place skull on current target (icon brightens).
+  Click again = remove skull (icon dims).
+  Switches target = icon resets to dim.
+
+
+#####  Pull Alerts  #####
+
+When a non-tank party member grabs aggro:
+  - A red flashing box appears:  >> PULL! <<  [Name]
+  - Local chat prints:  TauntMasterMini: [Name] pulled aggro!
+  - Optional: broadcasts to party / instance / raid chat
+
+First-pull detection:
+  If no one has pulled yet this combat, the first non-tank to grab aggro
+  triggers a distinct alert:  >> 1st PULL! <<  [Name]
+  with the message:  1st Pull by [Name]!
+  Subsequent pulls in the same combat revert to normal alerts.
+  First-pull state resets when combat ends.
+
+All three pull settings are enabled by default and can be toggled in /tm.
+
+
+#####  Supported Tank Classes  #####
+
+  Protection Warrior ........ Taunt
+  Protection Paladin ........ Hand of Reckoning
+  Blood Death Knight ........ Dark Command
+  Guardian Druid ............ Growl
+  Brewmaster Monk ........... Provoke
+  Vengeance Demon Hunter .... Torment
+
+You can assign ANY spell to left/right click — taunts, blessings, heals,
+damage, or defensives.
+
+
+#####  Troubleshooting  #####
+
+  No bars visible?
+    → Join a party or raid.  Solo shows only your own bar.
+
+  Dropdown shows no spells?
+    → Type /tm spells for diagnostic.  Reopen picker after a moment.
+
+  Click does nothing?
+    → Must be out of combat to rebuild macros.  Type /reload.
+
+  Wrong spell fires after reload?
+    → Fixed in 6.3.0.  If it persists, /reload once more.
+
+  Skull marker not working?
+    → Must have a target selected.  Uses /targetmarker securely.
+
+  Pull alert not firing?
+    → Alert is based on threat healthbar color.  Ensure the non-tank
+      actually has aggro (orange or red bar).
+
+  Enable Lua error reporting:
+    /console scriptErrors 1
+
+  Reset all settings:
+    Exit WoW.  Delete:
+      WTF/Account/<YourAccount>/SavedVariables/TauntMasterMini.lua
+      WTF/Account/<YourAccount>/<Realm>/<Char>/SavedVariables/TauntMasterMini.lua
+    Restart WoW.
+
+================================================================================

@@ -1,0 +1,18 @@
+## Author: Don Thompson (Haruspex)
+## Designer: Don Thompson (Haruspex)
+## Credits: Based on TauntMaster2 by Tartarusspawn (https://www.curseforge.com/members/_forgeuser2432659/projects). Modernized and rewritten by Don Thompson (Haruspex). For Scouse.
+## Interface: 120000
+## Notes: Threat management for tanks. Color-coded party/raid bars with one-click taunting, spell cooldown overlays, out-of-range indicators, full spellbook spell picker, pull alerts, first-pull detection, skull marker toggle, and Show Self option. Updated for Midnight Pre-Patch 12.0.0.
+## Title: TauntMaster Mini
+## Version: 6.6.0
+## IconTexture: Interface\AddOns\TauntMasterMini\TMM.png
+## SavedVariables: TauntMasterMiniDB
+## SavedVariablesPerCharacter: TauntMasterMiniDBChar
+## X-Curse-Packaged-Version: v 0.0.5
+## X-Curse-Project-Name: TauntMaster Mini
+## X-Curse-Project-ID: taunt-master-mini
+## X-Curse-Repository-ID: wow/taunt-master-mini/mainline
+embeds.xml
+TM_Var.lua
+TauntMasterMini.lua
+# TauntMasterMini.xml (still disabled while the Lua runtime creates frames)

@@ -1,0 +1,162 @@
+TauntMasterMini – Threat Management Addon for Tanks
+Version 6.6.0 | Updated for Midnight Pre-Patch 12.0.0
+
+================================================================================
+
+OVERVIEW
+--------
+TauntMasterMini is a lightweight, all-in-one threat management addon designed
+for tank players.  It displays compact, color-coded party and raid frames with
+real-time threat tracking, one-click spell casting, cooldown overlays, pull
+alerts with first-pull detection, and a skull marker toggle — everything you
+need to manage threat in dungeons and raids within a single movable frame.
+
+
+CORE FEATURES
+-------------
+
+Real-Time Threat Detection & Monitoring
+  • Visual party/raid frames with color-coded health bars indicating threat level
+  • Instant threat situation updates for all group members
+  • Class-colored player names for quick identification
+  • Real-time health tracking for every party and raid member
+
+One-Click Spell Casting
+  • Left-click any player bar to cast your primary spell on their target
+  • Right-click to cast a configurable secondary spell
+  • Hostile spells (taunts, damage) automatically target the group member's
+    enemy — no manual target switching required
+  • Friendly spells (blessings, heals) cast directly on the group member
+  • Dual-target spells try the friendly unit first, then fall back to their
+    hostile target
+
+Full Spellbook Spell Picker
+  • Scans all spellbook tabs, flyouts (Blessings, Portals, etc.), and
+    talent-granted spells
+  • Action bar supplementary scan catches anything the spellbook might miss
+  • Intelligent filtering: only shows combat-relevant spells (harmful or
+    helpful, non-passive)
+  • Explicit blocklist removes Fishing, Cooking, Mining, Skinning, and other
+    non-combat entries
+  • Class default taunt always available as a fallback
+
+Visual Indicators
+  • Threat-colored health bars:
+      Green (no threat) → Yellow (high threat) → Orange (insecure aggro) →
+      Red (tanking securely)
+  • Dual cooldown overlays: split clock-sweep display — left half for
+    left-click spell, right half for right-click spell
+  • Out-of-range indicator: red tint overlay appears when the spell target
+    is beyond range
+  • Tank role icon: shield on players assigned the Tank role
+  • Friendly target warning: icon when a group member is targeting a friendly
+    unit instead of an enemy
+
+Pull Alerts & First-Pull Detection
+  • Flash notification when a non-tank party member grabs aggro — a red
+    flashing banner pops up near the top of the screen for 3 seconds
+  • First-pull detection: when no one has pulled yet this combat, the first
+    non-tank to grab aggro triggers a distinct "1st Pull by [Name]!" alert
+    with an orange-accented flash; subsequent pulls revert to normal alerts
+  • Local chat message printed for every pull detected
+  • Optional party/instance/raid chat announce broadcasts the alert to your
+    group channel
+  • Smart debounce: 5-second cooldown per unit prevents spam
+  • First-pull state resets automatically when combat ends
+  • All three pull alert checkboxes enabled by default
+
+Skull Marker Toggle
+  • Small skull icon above the tank bar header
+  • Click to place a skull raid marker on your current target; click again
+    to remove it
+  • Visual feedback: icon brightens when skull is active, dims when removed
+    or when you switch targets
+  • Uses Blizzard's SecureActionButtonTemplate with /targetmarker macro for
+    taint-immune operation — works reliably even in tainted addon contexts
+
+Flexible Customization
+  • Adjustable button dimensions (width: 50–200 px, height: 20–60 px)
+  • Configurable grid layout (1–20 units per column, 1–8 columns max)
+  • Movable frame with drag handle and lock/unlock toggle; position saved
+    per-character
+  • Minimap button: left-click for options, right-click to toggle the frame
+  • Show Self toggle: hide your own button from the group list when you
+    don't need to taunt yourself (session-only, resets on reload)
+  • Toggle player names, cooldown overlays, and minimap icon independently
+  • All changes are combat-safe — queued until you leave combat
+
+
+TANK CLASS SUPPORT
+------------------
+All six tank specializations are supported with class-specific default taunts:
+
+  Protection Warrior ........ Taunt
+  Protection Paladin ........ Hand of Reckoning
+  Blood Death Knight ........ Dark Command
+  Guardian Druid ............ Growl
+  Brewmaster Monk ........... Provoke
+  Vengeance Demon Hunter .... Torment
+
+Any spell from your spellbook can be assigned to left-click or right-click —
+taunts, blessings, heals, defensives, or damage spells.
+
+
+SLASH COMMANDS
+--------------
+  /tm or /TauntMasterMini     Open options menu
+  /tm show                    Show the TauntMasterMini frame
+  /tm hide                    Hide the TauntMasterMini frame
+  /tm toggle                  Toggle frame visibility
+  /tm lock                    Lock frame position
+  /tm unlock                  Unlock frame position
+  /tm spells                  Full spell diagnostic dump
+  /tm debug                   Print button macros for each unit
+
+
+KEY FEATURES AT A GLANCE
+-------------------------
+  ✓ Real-time threat visualization — color-coded bars and live health for
+    every party/raid member
+  ✓ One-click casting — left/right click casts on a member's hostile target
+    via smart macros; friendly spells cast directly on the member
+  ✓ Full spellbook spell picker — scans tabs, flyouts, talents, and action
+    bars; filters out professions and non-combat spells
+  ✓ Dual cooldown overlays — split clock-sweep display shows both left-click
+    and right-click spell cooldowns
+  ✓ Out-of-range indicator — red tint overlay when the target is beyond
+    spell range
+  ✓ Skull marker toggle — place or remove a skull on your target with one
+    click; taint-immune secure implementation
+  ✓ Pull alerts with first-pull detection — flashing banner, local message,
+    and optional group chat announce; distinct "1st Pull" notification
+  ✓ Class-aware defaults — auto-selects the correct taunt for all six tank
+    specs
+  ✓ Tank role indicators — shield icon highlights assigned tanks at a glance
+  ✓ Friendly-target warning — icon shows when a player is targeting a
+    friendly unit
+  ✓ Show Self toggle — hide your own bar to free space; resets to shown
+    on reload
+  ✓ Flexible layout — adjustable button width/height, units per column, and
+    max columns
+  ✓ Movable, lockable frame — drag handle to reposition; lock to prevent
+    movement; position saved per-character
+  ✓ Minimap integration — left-click opens options; right-click toggles
+    the frame
+  ✓ Smart group detection — auto-builds for solo, party, and raid (up to
+    40 players)
+  ✓ Modernized and lightweight — streamlined Lua, wiki-verified APIs for
+    Midnight Pre-Patch 12.0.0
+
+
+REQUIREMENTS
+------------
+  • World of Warcraft: Midnight Pre-Patch (12.0.0+)
+  • LibStub (included)
+  • LibDataBroker-1.1 (included)
+  • LibDBIcon-1.0 (included)
+
+
+CREDITS
+-------
+Based on TauntMaster2 by Tartarusspawn (CurseForge).
+Modernized and rewritten by (Haruspex).

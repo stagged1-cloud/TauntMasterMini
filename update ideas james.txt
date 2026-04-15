@@ -1,0 +1,12 @@
+class colours and icons
+role icons
+icons below the bars for spell cooldown
+text on bars needs to be readbale (colours arehard to read)
+grey not in combat, green in combat no aggro, yellow is losing/getting aggro, red full aggro.
+remove timers on the bars
+fix skull marker add slider for size
+hide when not in party option
+raid option to remove dps from gui
+save active spells per character
+
+
