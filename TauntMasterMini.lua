@@ -1521,9 +1521,11 @@ TMM_RebuildRoster = function()
         TMMButtons[i]:SetSize(bw, bh)
         if TMMButtons[i]._classIcon then
             TMMButtons[i]._classIcon:SetSize(bh, bh)
+            TMMButtons[i]._classIcon:Hide()
         end
         if TMMButtons[i]._roleIcon then
             TMMButtons[i]._roleIcon:SetSize(bh, bh)
+            TMMButtons[i]._roleIcon:Hide()
         end
     end
 
