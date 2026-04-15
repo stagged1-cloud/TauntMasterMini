@@ -43,6 +43,7 @@ local DEFAULTS = {
     showCooldowns = true,
     showNames = true,
     skullSize = 20,
+    hideWhenSolo = false,
     pullAlertEnabled = true,
     pullAlertPartyChat = true,
     firstPullNotification = true,
@@ -1329,6 +1330,15 @@ TMM_RebuildRoster = function()
     TMM_EnsureDefaults()
     if InCombatLockdown() then return end
     local parent = TauntMasterMini_Header or UIParent
+
+    -- Hide when not in party/raid if option is enabled
+    if TauntMasterMiniDB.hideWhenSolo and not IsInGroup() then
+        parent:Hide()
+        return
+    elseif not TauntMasterMiniDBChar.hideTM then
+        parent:Show()
+    end
+
     local units = {}
     local num = GetNumGroupMembers()
     local hideSelf = not TMM_showSelf
@@ -1587,7 +1597,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 670)
+        f:SetSize(360, 700)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1782,6 +1792,15 @@ TMM_CreateOrInitUI = function()
             if InCombatLockdown() then
                 TauntMasterMini_Header._tmmPendingRebuild = true
             else
+                TMM_RebuildRoster()
+            end
+        end)
+
+        AddCheck('Hide When Not In Party', function()
+            return TauntMasterMiniDB.hideWhenSolo or false
+        end, function(val)
+            TauntMasterMiniDB.hideWhenSolo = val
+            if not InCombatLockdown() then
                 TMM_RebuildRoster()
             end
         end)
