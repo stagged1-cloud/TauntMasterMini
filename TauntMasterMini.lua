@@ -1,7 +1,7 @@
 -- TauntMasterMini - Modernized version
 -- Author: Don Thompson (Haruspex) - 2025-2026
 -- Updated for WoW Midnight Pre-Expansion Patch 12.0.0 (Build 65512) - January 2026
--- v6.6.0 - April 2026
+-- v6.7.0 - April 2026
 -- A threat management addon for tanks. For Scouse.
 
 local addonName = ...
@@ -2112,7 +2112,7 @@ end
 
 TMM_CreateOrInitUI()
 DebugPrint('TauntMasterMini.lua file loaded')
-print('|cFF00FF00TauntMasterMini v6.6.0|r by |cFFFFFFFF(Haruspex)|r.. Type |cFFFFFF00/tm|r for options.')
+print('|cFF00FF00TauntMasterMini v6.7.0|r by |cFFFFFFFF(Haruspex)|r.. Type |cFFFFFF00/tm|r for options.')
 
 
 
