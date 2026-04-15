@@ -899,7 +899,19 @@ function TauntMasterMini_UpdateIcons(button)
     -- Try multiple approaches for maximum compatibility
     if button._roleIcon and button._roleIconTex then
         local role = UnitGroupRolesAssigned(unit)
-        if not role or role == 'NONE' then role = 'DAMAGER' end
+        if not role or role == 'NONE' then
+            -- Fall back to spec role for the player, default DPS for others
+            if UnitIsUnit(unit, 'player') then
+                local spec = GetSpecialization()
+                if spec then
+                    role = GetSpecializationRole(spec) or 'DAMAGER'
+                else
+                    role = 'DAMAGER'
+                end
+            else
+                role = 'DAMAGER'
+            end
+        end
         -- Try atlas first (modern WoW), fall back to texture+coords
         local ok = pcall(function()
             if role == 'TANK' then
