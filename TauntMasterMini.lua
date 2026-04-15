@@ -896,13 +896,31 @@ function TauntMasterMini_UpdateIcons(button)
     if not unit or not UnitExists(unit) then return end
 
     -- Role icon: show Tank/Healer/DPS based on assigned group role
-    if button._roleIcon then
+    -- Try multiple approaches for maximum compatibility
+    if button._roleIcon and button._roleIconTex then
         local role = UnitGroupRolesAssigned(unit)
         if not role or role == 'NONE' then role = 'DAMAGER' end
-        local atlasName = (role == 'TANK' and 'roleicon-tank')
-                       or (role == 'HEALER' and 'roleicon-healer')
-                       or 'roleicon-dps'
-        button._roleIcon:SetAtlas(atlasName)
+        -- Try atlas first (modern WoW), fall back to texture+coords
+        local ok = pcall(function()
+            if role == 'TANK' then
+                button._roleIconTex:SetAtlas('roleicon-tank')
+            elseif role == 'HEALER' then
+                button._roleIconTex:SetAtlas('roleicon-healer')
+            else
+                button._roleIconTex:SetAtlas('roleicon-dps')
+            end
+        end)
+        if not ok or not button._roleIconTex:GetTexture() then
+            -- Fallback: use the LFG roles texture sheet with hardcoded coords
+            button._roleIconTex:SetTexture('Interface\\LFGFrame\\UI-LFG-ICON-ROLES')
+            if role == 'TANK' then
+                button._roleIconTex:SetTexCoord(0, 0.265625, 0.265625, 0.53125)
+            elseif role == 'HEALER' then
+                button._roleIconTex:SetTexCoord(0.265625, 0.53125, 0, 0.265625)
+            else
+                button._roleIconTex:SetTexCoord(0.265625, 0.53125, 0.265625, 0.53125)
+            end
+        end
         button._roleIcon:Show()
     end
 
@@ -1181,13 +1199,18 @@ local function TMM_CreateUnitButton(index)
     btn.name = label
 
     -- Role icon to the right of the bar, sized to match bar height
-    local roleIcon = btn:CreateTexture(name .. '_TM_Role_Icon', 'OVERLAY')
+    -- Use a child Frame with its own texture so it renders independently
+    local roleFrame = CreateFrame('Frame', name .. '_RoleFrame', btn)
     local roleSize = (TMM_Get('height') or 30)
-    roleIcon:SetSize(roleSize, roleSize)
-    roleIcon:SetPoint('LEFT', btn, 'RIGHT', 2, 0)
-    roleIcon:Hide()
-    btn.tankicon = roleIcon    -- keep backward-compat field name
-    btn._roleIcon = roleIcon
+    roleFrame:SetSize(roleSize, roleSize)
+    roleFrame:SetPoint('LEFT', btn, 'RIGHT', 2, 0)
+    roleFrame:SetFrameLevel(btn:GetFrameLevel() + 2)
+    local roleIcon = roleFrame:CreateTexture(nil, 'ARTWORK')
+    roleIcon:SetAllPoints(roleFrame)
+    roleFrame:Hide()
+    btn.tankicon = roleFrame    -- keep backward-compat field name
+    btn._roleIcon = roleFrame
+    btn._roleIconTex = roleIcon
 
     local friendlyIcon = btn:CreateTexture(name .. '_TM_Friendly_Icon', 'OVERLAY')
     friendlyIcon:SetSize(24, 24)
