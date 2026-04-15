@@ -933,13 +933,18 @@ local function TMM_GetSpellIcon(spellName)
 end
 
 local function TauntMasterMini_UpdateCooldowns(button)
-    if not TMM_Get('showCooldowns') then
+    local unit = button:GetAttribute('unit')
+    -- Only show spell cooldown icons on the player's own (tank) bar
+    local showIcons = TMM_Get('showCooldowns') and unit and UnitIsUnit(unit, 'player')
+    if not showIcons then
         if button._cdFrameLeft  then button._cdFrameLeft:SetCooldown(0, 0)  end
         if button._cdFrameRight then button._cdFrameRight:SetCooldown(0, 0) end
         if button._cdIconLeft  then button._cdIconLeft:Hide()  end
         if button._cdIconRight then button._cdIconRight:Hide() end
+        if button._cdBg then button._cdBg:Hide() end
         return
     end
+    if button._cdBg then button._cdBg:Show() end
 
     local now = GetTime()
 
@@ -1191,6 +1196,15 @@ local function TMM_CreateUnitButton(index)
     SetupCooldownFrame(cdFrameRight)
     btn._cdFrameRight = cdFrameRight
 
+    -- Black background strip behind cooldown icons
+    local cdBg = btn:CreateTexture(name .. '_CDBg', 'BACKGROUND')
+    cdBg:SetPoint('TOPLEFT', btn, 'BOTTOMLEFT', 0, 0)
+    cdBg:SetPoint('TOPRIGHT', btn, 'BOTTOMRIGHT', 0, 0)
+    cdBg:SetHeight(CD_ICON_SIZE + 2)
+    cdBg:SetColorTexture(0, 0, 0, 0.85)
+    cdBg:Hide()
+    btn._cdBg = cdBg
+
     btn:SetScript('OnEvent', TauntMasterMini_Button_OnEvent)
     btn:SetScript('OnShow', TauntMasterMini_Button_OnShow)
     btn:SetScript('OnUpdate', TauntMasterMini_Button_OnUpdate)
@@ -1394,20 +1408,28 @@ TMM_RebuildRoster = function()
         if TMMButtons[i] then TMMButtons[i]:Hide() end
     end
 
+    -- Layout: accumulate Y per column so only the player's row gets
+    -- extra vertical space for cooldown icons (21px = 18px icon + 3px gap).
+    local showCD = TMM_Get('showCooldowns')
+    local colY = {}  -- running Y offset per column
+    local topOffset = 5
+    if parent._dragHandle and parent._dragHandle:IsShown() then
+        topOffset = topOffset + DRAG_HANDLE_HEIGHT
+    end
+    local totalH = 0
+
     for i = 1, needed do
         local btn = TMMButtons[i]
         local unit = units[i]
         btn:ClearAllPoints()
         local col = math.floor((i - 1) / perCol)
-        local row = (i - 1) % perCol
-        -- Offset downward when drag handle is visible (unlocked)
-        local topOffset = 5
-        if parent._dragHandle and parent._dragHandle:IsShown() then
-            topOffset = topOffset + DRAG_HANDLE_HEIGHT
-        end
-        -- Extra vertical space for cooldown icons below each bar (18px icon + 3px gap)
-        local cdExtra = (TMM_Get('showCooldowns')) and 21 or 0
-        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + col * (bw + 8), -topOffset - row * (bh + 4 + cdExtra))
+        if not colY[col] then colY[col] = 0 end
+        local yOff = colY[col]
+        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + col * (bw + 8), -topOffset - yOff)
+        -- Advance Y: bar height + gap, plus cooldown space only for player
+        local cdExtra = (showCD and UnitIsUnit(unit, 'player')) and 21 or 0
+        colY[col] = yOff + bh + 4 + cdExtra
+        if colY[col] > totalH then totalH = colY[col] end
         btn:SetAttribute('unit', unit)
         TMM_ConfigureClickAction(btn, unit)
         btn:Show()
@@ -1415,10 +1437,8 @@ TMM_RebuildRoster = function()
     end
 
     local cols = math.min(maxCols, math.max(1, math.ceil(needed / perCol)))
-    local rows = math.min(perCol, needed)
     local handleExtra = (parent._dragHandle and parent._dragHandle:IsShown()) and DRAG_HANDLE_HEIGHT or 0
-    local cdExtra = (TMM_Get('showCooldowns')) and 21 or 0
-    parent:SetSize(10 + cols * bw + (cols - 1) * 8, 10 + rows * (bh + cdExtra) + (rows - 1) * 4 + handleExtra)
+    parent:SetSize(10 + cols * bw + (cols - 1) * 8, 10 + totalH + handleExtra)
 end
 
 TMM_DebugDump = function()
