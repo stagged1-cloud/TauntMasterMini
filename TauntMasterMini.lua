@@ -922,6 +922,10 @@ function TauntMasterMini_UpdateIcons(button)
                 role = 'DAMAGER'
             end
         end
+        -- Clear any previous texture, then set atlas for current role.
+        -- SetAtlas handles both texture and texcoords in one call.
+        button._roleIconTex:SetTexture(nil)
+        button._roleIconTex:SetTexCoord(0, 1, 0, 1)
         if role == 'TANK' then
             button._roleIconTex:SetAtlas('roleicon-tank')
         elseif role == 'HEALER' then
