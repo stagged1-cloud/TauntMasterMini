@@ -803,10 +803,18 @@ end
 function TauntMasterMini_UpdateIcons(button)
     local unit = button:GetAttribute('unit')
     if not unit or not UnitExists(unit) then return end
-    if button.tankicon then
+
+    -- Role icon: show Tank/Healer/DPS based on assigned group role
+    if button._roleIcon and ROLE_ICON_TCOORDS then
         local role = UnitGroupRolesAssigned(unit)
-        if role == 'TANK' then button.tankicon:Show() else button.tankicon:Hide() end
+        if role and role ~= 'NONE' and ROLE_ICON_TCOORDS[role] then
+            button._roleIcon:SetTexCoord(unpack(ROLE_ICON_TCOORDS[role]))
+            button._roleIcon:Show()
+        else
+            button._roleIcon:Hide()
+        end
     end
+
     if button.healicon then
         local targetUnit = unit .. 'target'
         if UnitExists(targetUnit) and UnitIsFriend(unit, targetUnit) then
@@ -1016,15 +1024,17 @@ local function TMM_CreateUnitButton(index)
     label:SetText('-')
     btn.name = label
 
-    local tankIcon = btn:CreateTexture(name .. '_TM_Tank_Icon', 'OVERLAY')
-    tankIcon:SetSize(18, 18)
-    tankIcon:SetPoint('LEFT', btn, 'LEFT', 20, 0)
-    tankIcon:SetTexture('Interface\\LFGFrame\\UI-LFG-ICON-ROLES')
+    -- Role icon: shows Tank, Healer, or DPS icon based on assigned role
+    local roleIcon = btn:CreateTexture(name .. '_TM_Role_Icon', 'OVERLAY')
+    roleIcon:SetSize(16, 16)
+    roleIcon:SetPoint('LEFT', btn, 'LEFT', 20, 0)
+    roleIcon:SetTexture('Interface\\LFGFrame\\UI-LFG-ICON-ROLES')
     if ROLE_ICON_TCOORDS and ROLE_ICON_TCOORDS.TANK then
-        tankIcon:SetTexCoord(unpack(ROLE_ICON_TCOORDS.TANK))
+        roleIcon:SetTexCoord(unpack(ROLE_ICON_TCOORDS.TANK))
     end
-    tankIcon:Hide()
-    btn.tankicon = tankIcon
+    roleIcon:Hide()
+    btn.tankicon = roleIcon    -- keep backward-compat field name
+    btn._roleIcon = roleIcon
 
     local friendlyIcon = btn:CreateTexture(name .. '_TM_Friendly_Icon', 'OVERLAY')
     friendlyIcon:SetSize(24, 24)
