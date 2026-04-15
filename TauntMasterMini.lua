@@ -1528,7 +1528,14 @@ TMM_RebuildRoster = function()
     end
 
     for i = needed + 1, #TMMButtons do
-        if TMMButtons[i] then TMMButtons[i]:Hide() end
+        if TMMButtons[i] then
+            TMMButtons[i]:Hide()
+            if TMMButtons[i]._classIcon then TMMButtons[i]._classIcon:Hide() end
+            if TMMButtons[i]._roleIcon then TMMButtons[i]._roleIcon:Hide() end
+            if TMMButtons[i]._cdBg then TMMButtons[i]._cdBg:Hide() end
+            if TMMButtons[i]._cdIconLeft then TMMButtons[i]._cdIconLeft:Hide() end
+            if TMMButtons[i]._cdIconRight then TMMButtons[i]._cdIconRight:Hide() end
+        end
     end
 
     -- Layout: accumulate Y per column so only the player's row gets
