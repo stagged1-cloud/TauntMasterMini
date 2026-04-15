@@ -463,7 +463,7 @@ end
 local function TMM_SetHeaderShown(show)
     if not TauntMasterMini_Header then return end
     if InCombatLockdown() then
-        TauntMasterMini_Header._tmmPendingShowState = show and true or false
+        TauntMasterMini_Header._tmmPendingShowState = show and 1 or 0
         print('TauntMasterMini: Action queued until out of combat.')
         return
     end
@@ -1851,7 +1851,7 @@ TMM_CreateOrInitUI = function()
         end, function(v)
             TMM_Set('width', v)
             if InCombatLockdown() then
-                TauntMasterMini_Header._tmmPendingRebuild = true
+                TauntMasterMini_Header._tmmPendingRebuild = 1
             else
                 TMM_RebuildRoster()
             end
@@ -1862,7 +1862,7 @@ TMM_CreateOrInitUI = function()
         end, function(v)
             TMM_Set('height', v)
             if InCombatLockdown() then
-                TauntMasterMini_Header._tmmPendingRebuild = true
+                TauntMasterMini_Header._tmmPendingRebuild = 1
             else
                 TMM_RebuildRoster()
             end
@@ -1873,7 +1873,7 @@ TMM_CreateOrInitUI = function()
         end, function(v)
             TMM_Set('unitsPerColumn', v)
             if InCombatLockdown() then
-                TauntMasterMini_Header._tmmPendingRebuild = true
+                TauntMasterMini_Header._tmmPendingRebuild = 1
             else
                 TMM_RebuildRoster()
             end
@@ -1884,7 +1884,7 @@ TMM_CreateOrInitUI = function()
         end, function(v)
             TMM_Set('maxColumns', v)
             if InCombatLockdown() then
-                TauntMasterMini_Header._tmmPendingRebuild = true
+                TauntMasterMini_Header._tmmPendingRebuild = 1
             else
                 TMM_RebuildRoster()
             end
@@ -1896,7 +1896,7 @@ TMM_CreateOrInitUI = function()
             TauntMasterMiniDBChar.leftClickSpell = val
             TMM_spellIconCache = {}
             if InCombatLockdown() then
-                TauntMasterMini_Header._tmmPendingRebuild = true
+                TauntMasterMini_Header._tmmPendingRebuild = 1
             else
                 TMM_RebuildRoster()
             end
@@ -1908,7 +1908,7 @@ TMM_CreateOrInitUI = function()
             TauntMasterMiniDBChar.rightClickSpell = val
             TMM_spellIconCache = {}
             if InCombatLockdown() then
-                TauntMasterMini_Header._tmmPendingRebuild = true
+                TauntMasterMini_Header._tmmPendingRebuild = 1
             else
                 TMM_RebuildRoster()
             end
@@ -1956,7 +1956,7 @@ TMM_CreateOrInitUI = function()
         end, function(val)
             TMM_showSelf = val
             if InCombatLockdown() then
-                TauntMasterMini_Header._tmmPendingRebuild = true
+                TauntMasterMini_Header._tmmPendingRebuild = 1
             else
                 TMM_RebuildRoster()
             end
@@ -2198,18 +2198,18 @@ TMM_CreateOrInitUI = function()
                 if not InCombatLockdown() then
                     TMM_RebuildRoster()
                 else
-                    self._tmmPendingRebuild = true
+                    self._tmmPendingRebuild = 1
                 end
             elseif event == 'PLAYER_REGEN_ENABLED' then
                 -- Combat ended — reset first-pull tracker for the next encounter
                 TMM_firstPullName = nil
                 for k in pairs(pullAlertCooldown) do pullAlertCooldown[k] = nil end
-                if self._tmmPendingRebuild then
-                    self._tmmPendingRebuild = false
+                if self._tmmPendingRebuild == 1 then
+                    self._tmmPendingRebuild = nil
                     TMM_RebuildRoster()
                 end
                 if self._tmmPendingShowState ~= nil then
-                    local show = self._tmmPendingShowState
+                    local show = (self._tmmPendingShowState == 1)
                     self._tmmPendingShowState = nil
                     TMM_SetHeaderShown(show)
                 end
@@ -2222,7 +2222,7 @@ TMM_CreateOrInitUI = function()
                 -- Clear pull debounce table on roster changes
                 for k in pairs(pullAlertCooldown) do pullAlertCooldown[k] = nil end
                 if InCombatLockdown() then
-                    self._tmmPendingRebuild = true
+                    self._tmmPendingRebuild = 1
                 else
                     TMM_RebuildRoster()
                 end
