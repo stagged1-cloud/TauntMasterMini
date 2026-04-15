@@ -744,9 +744,8 @@ function TauntMasterMini_Button_OnShow(self)
     -- Set class-colour background and class icon
     local class = select(2, UnitClass(unit))
     if class then
-        local color = RAID_CLASS_COLORS[class]
-        if color and self._classBg then
-            self._classBg:SetColorTexture(color.r * 0.3, color.g * 0.3, color.b * 0.3, 0.85)
+        if self._classBg then
+            self._classBg:SetColorTexture(0, 0, 0, 0.85)
         end
         if self._classIcon and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class] then
             self._classIcon:SetTexCoord(unpack(CLASS_ICON_TCOORDS[class]))
@@ -754,7 +753,7 @@ function TauntMasterMini_Button_OnShow(self)
         end
     else
         if self._classBg then
-            self._classBg:SetColorTexture(0.15, 0.15, 0.15, 0.8)
+            self._classBg:SetColorTexture(0, 0, 0, 0.85)
         end
         if self._classIcon then
             self._classIcon:Hide()
