@@ -116,6 +116,7 @@ local cachedSpellsTime = 0
 local function TMM_InvalidateSpellCache()
     cachedSpells = nil
     cachedSpellsTime = 0
+    TMM_spellIconCache = {}
 end
 
 local function TMM_GetAvailableSpells()
@@ -742,11 +743,15 @@ function TauntMasterMini_Button_OnShow(self)
             self.name:Show()
             local class = select(2, UnitClass(unit))
             local color = class and RAID_CLASS_COLORS[class]
+            -- Brighten class colours slightly for readability on dark/coloured bars
+            local function brighten(c)
+                return math.min(1, c.r * 1.15 + 0.1), math.min(1, c.g * 1.15 + 0.1), math.min(1, c.b * 1.15 + 0.1)
+            end
             if color then
                 local name = UnitName(unit)
                 if name then
                     self.name:SetText(name)
-                    self.name:SetTextColor(color.r, color.g, color.b)
+                    self.name:SetTextColor(brighten(color))
                 else
                     C_Timer.After(0.5, function()
                         if UnitExists(unit) and self.name then
@@ -756,7 +761,7 @@ function TauntMasterMini_Button_OnShow(self)
                                 local retryClass = select(2, UnitClass(unit))
                                 local retryColor = retryClass and RAID_CLASS_COLORS[retryClass]
                                 if retryColor then
-                                    self.name:SetTextColor(retryColor.r, retryColor.g, retryColor.b)
+                                    self.name:SetTextColor(brighten(retryColor))
                                 end
                             end
                         end
@@ -869,13 +874,22 @@ local function TMM_GetCDDuration(spell)
     return spell and TMM_KNOWN_CD[spell:lower()] or TMM_DEFAULT_CD
 end
 
--- Helper: get spell icon texture for a spell name
+-- Helper: get spell icon texture for a spell name (cached to avoid API calls every tick)
+local TMM_spellIconCache = {}
+
 local function TMM_GetSpellIcon(spellName)
     if not spellName or spellName == '' then return nil end
+    if TMM_spellIconCache[spellName] ~= nil then
+        return TMM_spellIconCache[spellName] or nil
+    end
     if C_Spell and C_Spell.GetSpellInfo then
         local info = C_Spell.GetSpellInfo(spellName)
-        if info and info.iconID then return info.iconID end
+        if info and info.iconID then
+            TMM_spellIconCache[spellName] = info.iconID
+            return info.iconID
+        end
     end
+    TMM_spellIconCache[spellName] = false
     return nil
 end
 
@@ -1053,7 +1067,10 @@ local function TMM_CreateUnitButton(index)
     classIcon:Hide()
     btn._classIcon = classIcon
 
-    local label = btn:CreateFontString(name .. '_Name', 'OVERLAY', 'GameFontHighlight')
+    local label = btn:CreateFontString(name .. '_Name', 'OVERLAY')
+    label:SetFont('Fonts\\FRIZQT__.TTF', 11, 'OUTLINE')
+    label:SetShadowOffset(1, -1)
+    label:SetShadowColor(0, 0, 0, 1)
     label:SetAllPoints(btn)
     label:SetJustifyH('CENTER')
     label:SetJustifyV('MIDDLE')
