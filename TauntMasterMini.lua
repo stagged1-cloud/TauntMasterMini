@@ -834,16 +834,23 @@ function TauntMasterMini_UpdateThreat(button)
     button.healthbar:SetStatusBarColor(GetThreatStatusColor(status))
     local r, g, b = button.healthbar:GetStatusBarColor()
 
+    -- Remap ALL outcomes explicitly so no grey/unexpected colour leaks through.
     -- GetThreatStatusColor returns:
-    --   status 0: ~(0.69, 1.0, 0)   green   → Green (no aggro)
-    --   status 1: ~(1.0, 1.0, 0.47) yellow  → Yellow (gaining)
-    --   status 2: ~(1.0, 0.6, 0)    orange  → Yellow (losing)
-    --   status 3: ~(1.0, 0, 0)      red     → Red (full aggro)
-    if r > 0.9 and g > 0.4 and g < 0.8 then
-        -- Orange (status 2) → remap to yellow
+    --   status 0: ~(0.69, 1.0, 0)   green   → Green
+    --   status 1: ~(1.0, 1.0, 0.47) yellow  → Yellow
+    --   status 2: ~(1.0, 0.6, 0)    orange  → Yellow
+    --   status 3: ~(1.0, 0, 0)      red     → Red
+    if r > 0.9 and g < 0.15 then
+        -- Red (status 3) → Red
+        button.healthbar:SetStatusBarColor(1, 0, 0)
+    elseif r > 0.9 and g > 0.4 and g < 0.8 then
+        -- Orange (status 2) → Yellow
         button.healthbar:SetStatusBarColor(1, 1, 0)
-    elseif r < 0.8 and g > 0.8 then
-        -- Green (status 0) → our green
+    elseif r > 0.9 and g > 0.8 then
+        -- Yellow (status 1) → Yellow
+        button.healthbar:SetStatusBarColor(1, 1, 0)
+    else
+        -- Green (status 0) or anything unexpected → Green
         button.healthbar:SetStatusBarColor(0, 0.8, 0)
     end
 end
