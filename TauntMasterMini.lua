@@ -922,16 +922,15 @@ function TauntMasterMini_UpdateIcons(button)
                 role = 'DAMAGER'
             end
         end
-        -- Use modern WoW role atlas icons (pcall required in tainted context)
-        pcall(function()
-            if role == 'TANK' then
-                button._roleIconTex:SetAtlas('roleicon-tank')
-            elseif role == 'HEALER' then
-                button._roleIconTex:SetAtlas('roleicon-healer')
-            else
-                button._roleIconTex:SetAtlas('roleicon-dps')
-            end
-        end)
+        -- LFG role icon texture sheet — always set fresh to prevent stale icons
+        button._roleIconTex:SetTexture('Interface\\LFGFrame\\UI-LFG-ICON-ROLES')
+        if role == 'TANK' then
+            button._roleIconTex:SetTexCoord(0, 0.265625, 0.265625, 0.53125)
+        elseif role == 'HEALER' then
+            button._roleIconTex:SetTexCoord(0.265625, 0.53125, 0, 0.265625)
+        else
+            button._roleIconTex:SetTexCoord(0.265625, 0.53125, 0.265625, 0.53125)
+        end
         button._roleIcon:Show()
     end
 
