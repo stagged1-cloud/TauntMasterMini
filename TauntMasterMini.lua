@@ -1156,8 +1156,26 @@ end
 
 -- Direction arrow: rotate to point toward the unit relative to player facing.
 -- White when within 40 yards, grey when out of range, fades out after 10s OOR.
-local ARROW_RANGE = 40
+local ARROW_RANGE_YD = 40
 local ARROW_FADE_TIME = 10
+
+-- Get unit position using multiple APIs (instance coords or map coords)
+local function TMM_GetUnitPosition(unit)
+    -- Try instance/world coords first (works in instances, BGs, some world)
+    local y, x = UnitPosition(unit)
+    if x and y then return x, y, true end  -- true = real world coords (yards)
+    -- Fallback: map-relative coords (0-1 range, works everywhere)
+    if C_Map and C_Map.GetBestMapForUnit then
+        local mapID = C_Map.GetBestMapForUnit(unit)
+        if mapID then
+            local pos = C_Map.GetPlayerMapPosition(mapID, unit)
+            if pos then
+                return pos.x, pos.y, false  -- false = map coords (0-1)
+            end
+        end
+    end
+    return nil, nil, false
+end
 
 local function TauntMasterMini_UpdateDirection(button)
     if not button._dirArrow or not button._dirArrow:IsShown() then return end
@@ -1166,44 +1184,57 @@ local function TauntMasterMini_UpdateDirection(button)
         button._dirArrow:Hide()
         return
     end
-    local py, px = UnitPosition('player')
-    local uy, ux = UnitPosition(unit)
+
+    local px, py, pWorld = TMM_GetUnitPosition('player')
+    local ux, uy, uWorld = TMM_GetUnitPosition(unit)
     if not px or not ux then
         button._dirArrow:SetRotation(0)
         button._dirArrow:SetVertexColor(0.5, 0.5, 0.5, 0.4)
         return
     end
+
     local dx = ux - px
     local dy = uy - py
-    local dist = math.sqrt(dx * dx + dy * dy)
 
-    -- Rotate arrow to point toward the unit
-    local angle = math.atan2(dx, dy)
+    -- Rotate arrow to point toward the unit relative to player facing
+    -- Map coords: x increases right (east), y increases down (south)
+    -- World coords: x increases east, y increases north
+    local angle
+    if pWorld and uWorld then
+        angle = math.atan2(dx, dy)   -- world: north = +y
+    else
+        angle = math.atan2(dx, -dy)  -- map: south = +y, flip for north-up
+    end
     local facing = GetPlayerFacing() or 0
     button._dirArrow:SetRotation(-(angle - facing))
 
+    -- Range check: only meaningful with world coords (yards)
     local now = GetTime()
-    if dist <= ARROW_RANGE then
-        -- In range: white, reset OOR timer
+    if pWorld and uWorld then
+        local dist = math.sqrt(dx * dx + dy * dy)
+        if dist <= ARROW_RANGE_YD then
+            button._dirArrow:SetVertexColor(1, 1, 1, 0.9)
+            button._oorSince = nil
+        else
+            if not button._oorSince then
+                button._oorSince = now
+            end
+            local elapsed = now - button._oorSince
+            if elapsed >= ARROW_FADE_TIME then
+                button._dirArrow:Hide()
+                return
+            end
+            local fadeStart = ARROW_FADE_TIME - 5
+            local alpha = 0.5
+            if elapsed > fadeStart then
+                alpha = 0.5 * (1 - (elapsed - fadeStart) / 5)
+            end
+            button._dirArrow:SetVertexColor(0.5, 0.5, 0.5, alpha)
+        end
+    else
+        -- Map coords: can't measure yards, just show white
         button._dirArrow:SetVertexColor(1, 1, 1, 0.9)
         button._oorSince = nil
-    else
-        -- Out of range: grey out, then fade and hide after 10s
-        if not button._oorSince then
-            button._oorSince = now
-        end
-        local elapsed = now - button._oorSince
-        if elapsed >= ARROW_FADE_TIME then
-            button._dirArrow:Hide()
-            return
-        end
-        -- Fade from 0.5 alpha to 0 over the last 5 seconds
-        local fadeStart = ARROW_FADE_TIME - 5
-        local alpha = 0.5
-        if elapsed > fadeStart then
-            alpha = 0.5 * (1 - (elapsed - fadeStart) / 5)
-        end
-        button._dirArrow:SetVertexColor(0.5, 0.5, 0.5, alpha)
     end
 end
 
