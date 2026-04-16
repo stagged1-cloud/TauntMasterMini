@@ -922,15 +922,16 @@ function TauntMasterMini_UpdateIcons(button)
                 role = 'DAMAGER'
             end
         end
-        -- Use standard WoW spell icons (guaranteed to exist in all versions)
-        button._roleIconTex:SetTexCoord(0, 1, 0, 1)
-        if role == 'TANK' then
-            button._roleIconTex:SetTexture(132341)   -- Ability_Defend (shield)
-        elseif role == 'HEALER' then
-            button._roleIconTex:SetTexture(135915)   -- Spell_Holy_FlashHeal (cross)
-        else
-            button._roleIconTex:SetTexture(132349)   -- Ability_DualWield (swords)
-        end
+        -- Use modern WoW role atlas icons (pcall required in tainted context)
+        pcall(function()
+            if role == 'TANK' then
+                button._roleIconTex:SetAtlas('roleicon-tank')
+            elseif role == 'HEALER' then
+                button._roleIconTex:SetAtlas('roleicon-healer')
+            else
+                button._roleIconTex:SetAtlas('roleicon-dps')
+            end
+        end)
         button._roleIcon:Show()
     end
 
