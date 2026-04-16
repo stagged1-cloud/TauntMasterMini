@@ -58,6 +58,7 @@ local TMM_RebuildRoster
 local TMM_SetLocked
 local TMM_UpdateLockState
 local TMM_ConfigureClickAction
+local TMM_IsPlayer
 function TauntMasterMini_ConfigureSpells() end
 
 -- Session-only: always show all buttons on load; user unticks to hide self
@@ -804,7 +805,7 @@ end
 -- in tainted contexts (after UnitThreatSituation). Testing it with 'if'
 -- triggers an error. This wrapper uses string comparison on UnitGUID
 -- which returns a clean string, not a tainted boolean.
-local function TMM_IsPlayer(unit)
+TMM_IsPlayer = function(unit)
     if unit == 'player' then return true end
     local playerGUID = UnitGUID('player')
     local unitGUID = UnitGUID(unit)
