@@ -41,7 +41,6 @@ local DEFAULTS = {
     leftClickSpell = '',
     rightClickSpell = '',
     showCooldowns = true,
-    showNames = true,
     skullSize = 20,
     hideWhenSolo = false,
     hideDpsInRaid = false,
@@ -764,20 +763,27 @@ function TauntMasterMini_Button_OnShow(self)
         end
     end
 
-    -- Show name label OR direction arrow (not both)
-    local showArrow = TMM_Get('showDirectionArrow') and not TMM_IsPlayer(unit)
-    if self._dirArrow then
-        if showArrow then
-            self._dirArrow:Show()
-        else
-            self._dirArrow:Hide()
+    -- Show either names OR direction arrows (never both)
+    local useArrows = TMM_Get('showDirectionArrow')
+    if useArrows then
+        -- Arrows mode: show arrow on other players, hide names on all
+        if self._dirArrow then
+            if TMM_IsPlayer(unit) then
+                self._dirArrow:Hide()
+            else
+                self._dirArrow:Show()
+            end
         end
-    end
-    if self.name then
-        if showArrow or TMM_Get('showNames') == false then
+        if self.name then
             self.name:SetText('')
             self.name:Hide()
-        else
+        end
+    else
+        -- Names mode: show names, hide arrows
+        if self._dirArrow then
+            self._dirArrow:Hide()
+        end
+        if self.name then
             self.name:Show()
             local name = UnitName(unit)
             if name then
@@ -1277,7 +1283,7 @@ local function TMM_CreateUnitButton(index)
     local arrowSize = math.min((TMM_Get('height') or 30) - 4, 20)
     arrow:SetSize(arrowSize, arrowSize)
     arrow:SetPoint('CENTER', btn, 'CENTER', 0, 0)
-    arrow:SetTexture('Interface\\Minimap\\MiniMap-QuestArrow')
+    arrow:SetTexture(130877)  -- ROTATING-MINIMAPGUIDEARROW (navigation arrow)
     arrow:SetVertexColor(1, 1, 1, 0.9)
     arrow:Hide()
     btn._dirArrow = arrow
@@ -2032,17 +2038,6 @@ TMM_CreateOrInitUI = function()
             for _, btn in ipairs(TMMButtons) do
                 if btn:IsShown() then
                     TauntMasterMini_UpdateThreat(btn)
-                end
-            end
-        end)
-
-        AddCheck('Show Player Names', function()
-            return TMM_Get('showNames') ~= false
-        end, function(val)
-            TMM_Set('showNames', val)
-            for _, btn in ipairs(TMMButtons) do
-                if btn:IsShown() then
-                    TauntMasterMini_Button_OnShow(btn)
                 end
             end
         end)
