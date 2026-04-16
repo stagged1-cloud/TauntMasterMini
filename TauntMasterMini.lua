@@ -1283,7 +1283,7 @@ local function TMM_CreateUnitButton(index)
     local arrowSize = math.min((TMM_Get('height') or 30) - 4, 20)
     arrow:SetSize(arrowSize, arrowSize)
     arrow:SetPoint('CENTER', btn, 'CENTER', 0, 0)
-    arrow:SetTexture(130877)  -- ROTATING-MINIMAPGUIDEARROW (navigation arrow)
+    arrow:SetTexture('Interface\\AddOns\\TauntMasterMini\\tmm_arrow')
     arrow:SetVertexColor(1, 1, 1, 0.9)
     arrow:Hide()
     btn._dirArrow = arrow
