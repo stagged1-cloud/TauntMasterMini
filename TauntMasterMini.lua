@@ -1147,7 +1147,11 @@ local function TauntMasterMini_UpdateRange(button)
     end
 end
 
--- Direction arrow: rotate to point toward the unit relative to player facing
+-- Direction arrow: rotate to point toward the unit relative to player facing.
+-- White when within 40 yards, grey when out of range, fades out after 10s OOR.
+local ARROW_RANGE = 40
+local ARROW_FADE_TIME = 10
+
 local function TauntMasterMini_UpdateDirection(button)
     if not button._dirArrow or not button._dirArrow:IsShown() then return end
     local unit = button:GetAttribute('unit')
@@ -1159,13 +1163,41 @@ local function TauntMasterMini_UpdateDirection(button)
     local uy, ux = UnitPosition(unit)
     if not px or not ux then
         button._dirArrow:SetRotation(0)
+        button._dirArrow:SetVertexColor(0.5, 0.5, 0.5, 0.4)
         return
     end
     local dx = ux - px
     local dy = uy - py
-    local angle = math.atan2(dx, dy)        -- angle from north (positive Y)
-    local facing = GetPlayerFacing() or 0    -- player facing from north, CCW
+    local dist = math.sqrt(dx * dx + dy * dy)
+
+    -- Rotate arrow to point toward the unit
+    local angle = math.atan2(dx, dy)
+    local facing = GetPlayerFacing() or 0
     button._dirArrow:SetRotation(-(angle - facing))
+
+    local now = GetTime()
+    if dist <= ARROW_RANGE then
+        -- In range: white, reset OOR timer
+        button._dirArrow:SetVertexColor(1, 1, 1, 0.9)
+        button._oorSince = nil
+    else
+        -- Out of range: grey out, then fade and hide after 10s
+        if not button._oorSince then
+            button._oorSince = now
+        end
+        local elapsed = now - button._oorSince
+        if elapsed >= ARROW_FADE_TIME then
+            button._dirArrow:Hide()
+            return
+        end
+        -- Fade from 0.5 alpha to 0 over the last 5 seconds
+        local fadeStart = ARROW_FADE_TIME - 5
+        local alpha = 0.5
+        if elapsed > fadeStart then
+            alpha = 0.5 * (1 - (elapsed - fadeStart) / 5)
+        end
+        button._dirArrow:SetVertexColor(0.5, 0.5, 0.5, alpha)
+    end
 end
 
 -- Throttle OnUpdate to ~10 fps to reduce CPU overhead
