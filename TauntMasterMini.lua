@@ -46,6 +46,7 @@ local DEFAULTS = {
     hideWhenSolo = false,
     hideDpsInRaid = false,
     useClassColours = false,
+    showDirectionArrow = false,
     pullAlertEnabled = true,
     pullAlertPartyChat = true,
     firstPullNotification = true,
@@ -762,9 +763,17 @@ function TauntMasterMini_Button_OnShow(self)
         end
     end
 
-    -- Show or hide the name label based on setting
+    -- Show name label OR direction arrow (not both)
+    local showArrow = TMM_Get('showDirectionArrow') and not TMM_IsPlayer(unit)
+    if self._dirArrow then
+        if showArrow then
+            self._dirArrow:Show()
+        else
+            self._dirArrow:Hide()
+        end
+    end
     if self.name then
-        if TMM_Get('showNames') == false then
+        if showArrow or TMM_Get('showNames') == false then
             self.name:SetText('')
             self.name:Hide()
         else
@@ -1138,6 +1147,27 @@ local function TauntMasterMini_UpdateRange(button)
     end
 end
 
+-- Direction arrow: rotate to point toward the unit relative to player facing
+local function TauntMasterMini_UpdateDirection(button)
+    if not button._dirArrow or not button._dirArrow:IsShown() then return end
+    local unit = button:GetAttribute('unit')
+    if not unit or not UnitExists(unit) then
+        button._dirArrow:Hide()
+        return
+    end
+    local py, px = UnitPosition('player')
+    local uy, ux = UnitPosition(unit)
+    if not px or not ux then
+        button._dirArrow:SetRotation(0)
+        return
+    end
+    local dx = ux - px
+    local dy = uy - py
+    local angle = math.atan2(dx, dy)        -- angle from north (positive Y)
+    local facing = GetPlayerFacing() or 0    -- player facing from north, CCW
+    button._dirArrow:SetRotation(-(angle - facing))
+end
+
 -- Throttle OnUpdate to ~10 fps to reduce CPU overhead
 local OOR_THROTTLE = 0.1
 
@@ -1151,6 +1181,7 @@ function TauntMasterMini_Button_OnUpdate(self, elapsed)
     TauntMasterMini_UpdateIcons(self)
     TauntMasterMini_UpdateCooldowns(self)
     TauntMasterMini_UpdateRange(self)
+    TauntMasterMini_UpdateDirection(self)
 
     -- Pulse threat border alpha when flash is active
     if self._threatFlash and self._threatBorder then
@@ -1207,6 +1238,16 @@ local function TMM_CreateUnitButton(index)
     label:SetJustifyV('MIDDLE')
     label:SetText('-')
     btn.name = label
+
+    -- Direction arrow: points toward this unit relative to the player
+    local arrow = btn:CreateTexture(name .. '_Arrow', 'OVERLAY')
+    local arrowSize = math.min((TMM_Get('height') or 30) - 4, 20)
+    arrow:SetSize(arrowSize, arrowSize)
+    arrow:SetPoint('CENTER', btn, 'CENTER', 0, 0)
+    arrow:SetTexture('Interface\\Minimap\\MiniMap-QuestArrow')
+    arrow:SetVertexColor(1, 1, 1, 0.9)
+    arrow:Hide()
+    btn._dirArrow = arrow
 
     -- Role icon to the right of the bar, sized to match bar height
     -- Use a child Frame with its own texture so it renders independently
@@ -1513,6 +1554,10 @@ TMM_RebuildRoster = function()
         if TMMButtons[i]._roleIcon then
             TMMButtons[i]._roleIcon:SetSize(bh, bh)
             TMMButtons[i]._roleIcon:Hide()
+        end
+        if TMMButtons[i]._dirArrow then
+            local arrowSize = math.min(bh - 4, 20)
+            TMMButtons[i]._dirArrow:SetSize(arrowSize, arrowSize)
         end
     end
 
@@ -1962,7 +2007,17 @@ TMM_CreateOrInitUI = function()
             return TMM_Get('showNames') ~= false
         end, function(val)
             TMM_Set('showNames', val)
-            -- Refresh all buttons immediately
+            for _, btn in ipairs(TMMButtons) do
+                if btn:IsShown() then
+                    TauntMasterMini_Button_OnShow(btn)
+                end
+            end
+        end)
+
+        AddCheck('Show Direction Arrows  (replaces names)', function()
+            return TMM_Get('showDirectionArrow')
+        end, function(val)
+            TMM_Set('showDirectionArrow', val)
             for _, btn in ipairs(TMMButtons) do
                 if btn:IsShown() then
                     TauntMasterMini_Button_OnShow(btn)
