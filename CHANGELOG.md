@@ -2,6 +2,25 @@
 
 All notable changes to TauntMasterMini will be documented in this file.
 
+## [6.7.0] - 2026-05-05
+
+### Added
+- **Role icons for every player** — Tank / Healer / DPS icon shown on every bar (not just tanks) using the LFG role texture sheet; falls back to DPS when role is unassigned and infers Tank/Healer from spec where possible
+
+### Fixed
+- **"Show Self" ignored when solo** — Solo branch unconditionally added the player to the unit list; now respects the toggle, so unticking Show Self while solo correctly hides your bar
+- **Removed friendly-target heal icon** — The small green-outlined icon that appeared on the right of bars when a unit was targeting a friendly was confusing (looked like a stray green square); fully removed along with its texture file (`tm_friendly_icon8.tga`)
+- **Role icons showing stale data after roster change** — Class and role icons are now reset before each rebuild and explicitly hidden on excess buttons when the roster shrinks (e.g. when Show Self is toggled off)
+- **Taint error from boolean test on tainted flag** — Pending-rebuild flag is now compared against `nil` rather than truth-tested, avoiding a taint propagation path when the flag carried tainted state
+- **`UnitIsUnit` taint** — All `UnitIsUnit` calls replaced with GUID comparison (`UnitGUID(a) == UnitGUID(b)`), which is taint-safe in protected contexts
+- **Role icon texture issues** — Multiple iterations (numeric IDs → atlas → atlas+pcall → direct LFG sheet) settled on using the LFG texture sheet directly with manual `SetTexCoord`, the most reliable path across UI states
+
+### Technical
+- `TMM_IsPlayer` is forward-declared so `OnShow` handlers can reference it during early-load
+- Role icons use a child `Frame` with its own `ARTWORK` texture so the icon renders independently of the bar's overlay layer
+
+---
+
 ## [6.6.0] - 2026-04-10
 
 ### Added

@@ -1,38 +1,61 @@
 ================================================================================
                 TauntMasterMini - MIDNIGHT PRE-PATCH UPDATE
-                              Version 6.6.0
+                              Version 6.7.0
            Updated for WoW Midnight Pre-Expansion Patch 12.0.0
 ================================================================================
 
 
-WHAT'S NEW IN 6.6.0:
+WHAT'S NEW IN 6.7.0:
 ---------------------
+1. ROLE ICONS ON EVERY BAR
+   Tank / Healer / DPS role icons now appear on every player bar (not just
+   tanks).  Uses the LFG role texture sheet with manual SetTexCoord for
+   reliable rendering.  When a player has no assigned LFG role, the addon
+   infers Tank/Healer from their spec where possible and falls back to DPS
+   otherwise.
+
+2. SHOW SELF FIX
+   Unticking Show Self while solo now correctly hides your bar.  Previously
+   the solo branch added the player unconditionally and ignored the toggle.
+
+3. REMOVED FRIENDLY-TARGET INDICATOR
+   The small green-outlined icon that appeared on the right of bars when a
+   unit was targeting a friendly has been removed entirely.  It was
+   confusing visually (looked like a stray UI glitch) and its texture file
+   (tm_friendly_icon8.tga) has been deleted from the addon.
+
+4. TAINT-SAFE GUID COMPARISON
+   All UnitIsUnit calls replaced with UnitGUID(a) == UnitGUID(b).
+   UnitIsUnit can taint in protected contexts; GUID comparison is safe.
+
+5. ROLE-ICON RELIABILITY FIXES
+   - Stale icon data after roster shrink now clears correctly
+   - Class and role icons reset before each rebuild
+   - Excess buttons explicitly hide their icons when Show Self toggles off
+   - Settled on the LFG texture sheet directly after iterating through
+     numeric IDs and atlases that had loading quirks
+
+
+WHAT WAS NEW IN 6.6.0:
+-----------------------
 1. SHOW SELF OPTION
    New "Show Self" checkbox in the Options menu.  Untick to hide your own
    button from the group list — useful for tanks who don't need to taunt
    themselves.
 
-   - Session-only: always resets to shown on every /reload for reliability
-   - Untick in Options to hide your button for the current session
-   - Works in both party and raid groups
-
 2. IMPROVED SPELL PICKER
-   Dual-purpose spells like Death Coil (damages enemies / heals undead
-   allies) now appear in the spell list.  Previously they were filtered out
-   because the API didn't flag them as harmful or helpful.
+   Dual-purpose spells like Death Coil now appear in the spell list.
 
 3. FIXED SPELL BUTTONS
-   Click overlay now uses RegisterForClicks('AnyUp') — the standard for
-   secure action buttons — fixing spells not firing when clicked.
+   Click overlay uses RegisterForClicks('AnyUp') — standard for secure
+   action buttons — fixing spells not firing when clicked.
 
 4. FIXED COOLDOWN TRACKING
-   Replaced C_Spell.GetSpellCooldown (returns "secret" values unusable from
-   addon code in WoW 11.x+) with event-based tracking via
-   UNIT_SPELLCAST_SUCCEEDED + GetTime() and known spell durations.
+   Event-based tracking via UNIT_SPELLCAST_SUCCEEDED + GetTime() and known
+   spell durations, replacing the taint-prone C_Spell.GetSpellCooldown.
 
 5. IMPROVED SKULL MARKER TOGGLE
-   Replaced broken _onclick attribute with SecureHandlerWrapScript for
-   clean, taint-free state switching between place and remove.
+   SecureHandlerWrapScript for clean, taint-free state switching.
 
 
 WHAT WAS NEW IN 6.5.0:
@@ -111,7 +134,7 @@ FULL FEATURE LIST:
 - Pull alerts: flashing box + local message + optional party/instance chat
 - First-pull detection: distinct "1st Pull by ..." notification
 - Class-colored player names
-- Tank role icon and friendly-target warning icon
+- Role icons (Tank / Healer / DPS) on every bar
 - Threat colors: green (none), yellow (high), orange (insecure), red (tanking)
 - Adjustable button width (50-200), height (20-60), columns (1-8), rows (1-20)
 - Movable frame with drag handle and lock/unlock
@@ -146,7 +169,7 @@ TESTING AFTER UPDATE:
 ---------------------
 1. Type /reload in-game
 
-2. Look for: "TauntMasterMini v6.6.0" in green text in chat
+2. Look for: "TauntMasterMini v6.7.0" in green text in chat
 
 3. Type /tm — verify options open; check the "Pull Alerts" section at the
    bottom of the panel (three checkboxes, all ticked by default)

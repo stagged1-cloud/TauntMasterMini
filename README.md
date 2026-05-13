@@ -1,13 +1,14 @@
 # TauntMasterMini
 
-**Version 6.6.0** | Updated for World of Warcraft: Midnight Pre-Patch (12.0.0)
+**Version 6.7.0** | Updated for World of Warcraft: Midnight Pre-Patch (12.0.0)
 
 A lightweight threat utility for tanks that shows live threat bars, one-click spell casting, full spellbook spell selection, cooldown overlays, out-of-range warnings, and smart group targeting in a compact, movable frame.
 
-### What’s new in 6.6.0
-- Added **Show Self** option to hide your own button from the group list
-- Improved skull marker toggle and secure click handling
-- Fixed spell button reliability and dual-purpose spell picker entries
+### What’s new in 6.7.0
+- Added **role icons** (Tank / Healer / DPS) on every player bar
+- Fixed Show Self being ignored when solo
+- Removed the small green friendly-target indicator that some users mistook for a UI glitch
+- Replaced all `UnitIsUnit` calls with taint-safe GUID comparison
 
 ### Core features
 - Real-time color-coded threat bars for party/raid up to 40 players
@@ -72,8 +73,11 @@ Access via `/tm` or left-click the minimap button:
 | **Right Click Spell** | Spell cast on right-click (picked from your spellbook) |
 | **Show Minimap Icon** | Toggle the minimap button |
 | **Show Cooldowns** | Toggle cooldown sweep overlays on bars |
-| **Show Player Names** | Toggle class-colored name labels |
+| **Show Names on Bars** | Toggle class-colored name labels |
+| **Use Class Colours on Bars** | Tint each bar with the unit's class colour |
 | **Show Self** | Toggle your own button in the group list (session-only, resets on reload) |
+| **Hide When Not In Party** | Hide the whole frame when you are solo |
+| **Hide DPS In Raid** | In raids, only show tanks and healers |
 | **Lock Frame** | Lock/unlock frame position (green border when unlocked) |
 | **Alert when non-tank pulls** | Flash box + local chat message when a DPS/healer grabs aggro |
 | **Show "1st Pull by ..."** | Distinct first-pull notification when someone initiates combat |
@@ -89,7 +93,8 @@ Access via `/tm` or left-click the minimap button:
 | Spells not in dropdown | Type `/tm spells` for a diagnostic dump; try reopening the picker after a moment |
 | "Invalid target" | The group member's target may be dead or doesn't exist — this is normal |
 | Bars appear but clicks do nothing | Ensure you're out of combat, then `/reload` to rebuild macros |
-| Green squares on buttons | Should not happen in 6.5.0; if seen, `/reload` once more |
+| Green squares / outlines on buttons | Should not happen in 6.7.0+; the friendly-target indicator that caused this was removed |
+| Role icons missing | Some specs have no assigned LFG role; the addon now infers from spec and falls back to DPS |
 | Wrong spell after reload | Fixed in 6.3.0 — spells now refresh from SavedVariables on load |
 | Pull alert not firing | You must be targeting the mob the non-tank pulled; alert is based on threat healthbar color |
 | Pull alert spamming | 5-second debounce per unit is active; if still spamming, disable via Options |
@@ -122,6 +127,13 @@ Modernized and rewritten by **Don Thompson (Haruspex)**
 ---
 
 ## Changelog
+
+### Version 6.7.0
+- Added Tank/Healer/DPS role icons on every bar (not just tanks); falls back to DPS when role is unassigned and infers from spec
+- Fixed Show Self being ignored when solo (your bar still appeared even with the toggle off)
+- Removed the small green-outlined friendly-target indicator that appeared on bars whose unit was targeting a friendly — confusing visual, full removal including its texture file
+- Replaced all `UnitIsUnit` calls with GUID comparison for taint-safety in protected contexts
+- Multiple role-icon reliability fixes: stale icon data after roster shrink, atlas/texture loading paths, explicit hide on excess buttons
 
 ### Version 6.6.0
 - Added "Show Self" option to hide your own button from the group list — useful for tanks who don't need to taunt themselves

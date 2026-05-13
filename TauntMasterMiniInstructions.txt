@@ -1,5 +1,5 @@
 ================================================================================
-              TauntMasterMini v6.6.0 - Instructions & Reference
+              TauntMasterMini v6.7.0 - Instructions & Reference
               Updated for WoW Midnight Pre-Patch 12.0.0
 ================================================================================
 
@@ -21,8 +21,7 @@ compact frame with one bar per party or raid member.  Each bar shows:
   - Health (status bar)
   - Threat level (bar color: green/yellow/orange/red)
   - Class-colored player name
-  - Tank role icon (shield)
-  - Friendly-target warning icon
+  - Role icon (Tank / Healer / DPS) on every player bar
   - Cooldown sweeps for your left-click and right-click spells
   - Red tint when the spell target is out of range
 
@@ -107,8 +106,8 @@ Out-of-range:
   For friendly spells, checks range to the group member.
 
 Icons:
-  Shield icon (left side)  = player is assigned Tank role
-  Friendly icon (right)    = player is targeting a friendly unit
+  Class icon (left side)   = the player's class icon
+  Role icon (right side)   = Tank / Healer / DPS, from LFG role or spec
 
 Skull marker toggle:
   Small skull icon above the bar header.

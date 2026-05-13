@@ -40,12 +40,12 @@ local DEFAULTS = {
     minimap = { hide = false },
     leftClickSpell = '',
     rightClickSpell = '',
-    showCooldowns = true,
     skullSize = 20,
     hideWhenSolo = false,
     hideDpsInRaid = false,
     useClassColours = false,
-    showDirectionArrow = false,
+    showNames = true,
+    showSelf = true,
     pullAlertEnabled = true,
     pullAlertPartyChat = true,
     firstPullNotification = true,
@@ -60,8 +60,6 @@ local TMM_ConfigureClickAction
 local TMM_IsPlayer
 function TauntMasterMini_ConfigureSpells() end
 
--- Session-only: always show all buttons on load; user unticks to hide self
-local TMM_showSelf = true
 
 local function TMM_GetTauntSpell()
     local class = select(2, UnitClass('player'))
@@ -155,7 +153,6 @@ local cachedSpellsTime = 0
 local function TMM_InvalidateSpellCache()
     cachedSpells = nil
     cachedSpellsTime = 0
-    TMM_spellIconCache = {}
 end
 
 local function TMM_GetAvailableSpells()
@@ -194,6 +191,22 @@ local function TMM_GetAvailableSpells()
         ['mount'] = true,
         ['summon random favorite mount'] = true,
         ['fishing journal'] = true,
+        ['revive battle pets'] = true,
+        ['logging'] = true,
+        ['overload empowered deposit'] = true,
+        ['mechanism bypass'] = true,
+        ['raise dead'] = true,
+        ['revive pet'] = true,
+        ['tame beast'] = true,
+        ['beast lore'] = true,
+        ['eye of the beast'] = true,
+        ['eagle eye'] = true,
+        ['far sight'] = true,
+        ['sentry totem'] = true,
+        ['water walking'] = true,
+        ['path of frost'] = true,
+        ['detect undead'] = true,
+        ['sense undead'] = true,
     }
 
     -- Only include spells that can be used on other units.
@@ -693,7 +706,6 @@ function TauntMasterMini_Button_OnLoad(self)
     self.healthbar = self.healthbar or _G[self:GetName() .. '_HealthBar']
     self.name = self.name or _G[self:GetName() .. '_Name']
     self.tankicon = self.tankicon or _G[self:GetName() .. '_TM_Tank_Icon']
-    self.healicon = self.healicon or _G[self:GetName() .. '_TM_Friendly_Icon']
 end
 
 local function TMM_ApplyDefaultsForClass()
@@ -763,27 +775,9 @@ function TauntMasterMini_Button_OnShow(self)
         end
     end
 
-    -- Show either names OR direction arrows (never both)
-    local useArrows = TMM_Get('showDirectionArrow')
-    if useArrows then
-        -- Arrows mode: show arrow on other players, hide names on all
-        if self._dirArrow then
-            if TMM_IsPlayer(unit) then
-                self._dirArrow:Hide()
-            else
-                self._dirArrow:Show()
-            end
-        end
-        if self.name then
-            self.name:SetText('')
-            self.name:Hide()
-        end
-    else
-        -- Names mode: show names, hide arrows
-        if self._dirArrow then
-            self._dirArrow:Hide()
-        end
-        if self.name then
+    -- Show or hide names on bars
+    if self.name then
+        if TMM_Get('showNames') then
             self.name:Show()
             local name = UnitName(unit)
             if name then
@@ -800,6 +794,9 @@ function TauntMasterMini_Button_OnShow(self)
                     end
                 end)
             end
+        else
+            self.name:SetText('')
+            self.name:Hide()
         end
     end
     TauntMasterMini_UpdateThreat(self)
@@ -949,62 +946,9 @@ function TauntMasterMini_UpdateIcons(button)
         end
         button._roleIcon:Show()
     end
-
-    if button.healicon then
-        local targetUnit = unit .. 'target'
-        if UnitExists(targetUnit) and UnitIsFriend(unit, targetUnit) then
-            button.healicon:Show()
-        else
-            button.healicon:Hide()
-        end
-    end
 end
 
--- Cooldown tracking via cast events to avoid WoW 11.x secret-value taint.
---
--- C_Spell.GetSpellCooldown returns "secret" numbers that SetCooldown will not
--- accept from tainted addon code (OnUpdate handlers). The old GetSpellCooldown
--- global was removed in WoW 11.0.
---
--- Workaround: listen for UNIT_SPELLCAST_SUCCEEDED to know when the player
--- casts a taunt, then call SetCooldown with plain GetTime() / known-duration
--- values — no secret values, no taint issues.
-
--- Known base cooldown durations (seconds) for common tank spells.
-local TMM_KNOWN_CD = {
-    ['taunt']              = 8,
-    ['hand of reckoning']  = 8,
-    ['dark command']       = 8,
-    ['growl']              = 8,
-    ['provoke']            = 8,
-    ['torment']            = 8,
-    ['challenging shout']  = 180,
-    ['avengers shield']    = 15,
-}
-local TMM_DEFAULT_CD = 8.0
-
--- [spellName:lower()] = GetTime() when the spell was last cast
-local TMM_cdStartTime = {}
-
-local TMM_CDTracker = CreateFrame('Frame')
-TMM_CDTracker:RegisterEvent('UNIT_SPELLCAST_SUCCEEDED')
-TMM_CDTracker:SetScript('OnEvent', function(_, _, unit, _, spellID)
-    if unit ~= 'player' then return end
-    local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
-    if info and info.name then
-        TMM_cdStartTime[info.name:lower()] = GetTime()
-    end
-end)
-
-local function TMM_GetCDStart(spell)
-    return spell and TMM_cdStartTime[spell:lower()]
-end
-
-local function TMM_GetCDDuration(spell)
-    return spell and TMM_KNOWN_CD[spell:lower()] or TMM_DEFAULT_CD
-end
-
--- Helper: get spell icon texture for a spell name (cached to avoid API calls every tick)
+-- Helper: get spell icon texture for a spell name (cached for options panel)
 local TMM_spellIconCache = {}
 
 local function TMM_GetSpellIcon(spellName)
@@ -1021,81 +965,6 @@ local function TMM_GetSpellIcon(spellName)
     end
     TMM_spellIconCache[spellName] = false
     return nil
-end
-
-local function TauntMasterMini_UpdateCooldowns(button)
-    local unit = button:GetAttribute('unit')
-    -- Only show spell cooldown icons on the player's own (tank) bar
-    local showIcons = TMM_Get('showCooldowns') and unit and TMM_IsPlayer(unit)
-    if not showIcons then
-        if button._cdFrameLeft  then button._cdFrameLeft:SetCooldown(0, 0)  end
-        if button._cdFrameRight then button._cdFrameRight:SetCooldown(0, 0) end
-        if button._cdIconLeft  then button._cdIconLeft:Hide()  end
-        if button._cdIconRight then button._cdIconRight:Hide() end
-        if button._cdBg then button._cdBg:Hide() end
-        return
-    end
-    if button._cdBg then button._cdBg:Show() end
-
-    local now = GetTime()
-
-    local leftSpell = TMM_GetLeftSpell()
-    if not leftSpell or leftSpell == '' then leftSpell = TMM_GetTauntSpell() end
-
-    -- Update left spell icon texture
-    if button._cdIconLeft then
-        local icon = TMM_GetSpellIcon(leftSpell)
-        if icon then
-            button._cdIconLeft._iconTex:SetTexture(icon)
-            button._cdIconLeft:Show()
-        else
-            button._cdIconLeft:Hide()
-        end
-    end
-
-    if button._cdFrameLeft then
-        local start = TMM_GetCDStart(leftSpell)
-        if start then
-            local dur = TMM_GetCDDuration(leftSpell)
-            if now - start < dur then
-                button._cdFrameLeft:SetCooldown(start, dur)
-            else
-                TMM_cdStartTime[leftSpell:lower()] = nil
-                button._cdFrameLeft:SetCooldown(0, 0)
-            end
-        else
-            button._cdFrameLeft:SetCooldown(0, 0)
-        end
-    end
-
-    local rightSpell = TMM_GetRightSpell()
-    if not rightSpell or rightSpell == '' then rightSpell = TMM_GetTauntSpell() end
-
-    -- Update right spell icon texture
-    if button._cdIconRight then
-        local icon = TMM_GetSpellIcon(rightSpell)
-        if icon then
-            button._cdIconRight._iconTex:SetTexture(icon)
-            button._cdIconRight:Show()
-        else
-            button._cdIconRight:Hide()
-        end
-    end
-
-    if button._cdFrameRight then
-        local start = TMM_GetCDStart(rightSpell)
-        if start then
-            local dur = TMM_GetCDDuration(rightSpell)
-            if now - start < dur then
-                button._cdFrameRight:SetCooldown(start, dur)
-            else
-                TMM_cdStartTime[rightSpell:lower()] = nil
-                button._cdFrameRight:SetCooldown(0, 0)
-            end
-        else
-            button._cdFrameRight:SetCooldown(0, 0)
-        end
-    end
 end
 
 -- Out-of-range check.
@@ -1154,71 +1023,6 @@ local function TauntMasterMini_UpdateRange(button)
     end
 end
 
--- Direction arrow: rotate to point toward the unit relative to player facing.
--- White when within 40 yards, grey when out of range, fades out after 10s OOR.
--- NOTE: UnitPosition and GetPlayerFacing only work OUTDOORS (open world).
--- Blizzard blocks all position/facing APIs inside instances, dungeons, raids,
--- battlegrounds and arenas (since Patch 7.1.0). Arrows hide in instances.
-local ARROW_RANGE_YD = 40
-local ARROW_FADE_TIME = 10
-
-local function TauntMasterMini_UpdateDirection(button)
-    if not button._dirArrow or not button._dirArrow:IsShown() then return end
-    local unit = button:GetAttribute('unit')
-    if not unit or not UnitExists(unit) then
-        button._dirArrow:Hide()
-        return
-    end
-
-    -- GetPlayerFacing returns nil in instances — use as instance detection
-    local facing = GetPlayerFacing()
-    if not facing then
-        -- Inside an instance: position APIs unavailable, hide arrow
-        button._dirArrow:SetVertexColor(0.5, 0.5, 0.5, 0.15)
-        button._dirArrow:SetRotation(0)
-        return
-    end
-
-    -- UnitPosition returns y, x, z, instanceID (works outdoors only)
-    local py, px = UnitPosition('player')
-    local uy, ux = UnitPosition(unit)
-    if not px or not ux then
-        button._dirArrow:SetVertexColor(0.5, 0.5, 0.5, 0.15)
-        button._dirArrow:SetRotation(0)
-        return
-    end
-
-    local dx = ux - px
-    local dy = uy - py
-
-    -- atan2(dx, dy) gives angle from north (world: +y = north, +x = east)
-    local angle = math.atan2(dx, dy)
-    button._dirArrow:SetRotation(-(angle - facing))
-
-    -- Range check using world coordinates (yards)
-    local now = GetTime()
-    local dist = math.sqrt(dx * dx + dy * dy)
-    if dist <= ARROW_RANGE_YD then
-        button._dirArrow:SetVertexColor(1, 1, 1, 0.9)
-        button._oorSince = nil
-    else
-        if not button._oorSince then
-            button._oorSince = now
-        end
-        local elapsed = now - button._oorSince
-        if elapsed >= ARROW_FADE_TIME then
-            button._dirArrow:Hide()
-            return
-        end
-        local fadeStart = ARROW_FADE_TIME - 5
-        local alpha = 0.5
-        if elapsed > fadeStart then
-            alpha = 0.5 * (1 - (elapsed - fadeStart) / 5)
-        end
-        button._dirArrow:SetVertexColor(0.5, 0.5, 0.5, alpha)
-    end
-end
-
 -- Throttle OnUpdate to ~10 fps to reduce CPU overhead
 local OOR_THROTTLE = 0.1
 
@@ -1230,9 +1034,7 @@ function TauntMasterMini_Button_OnUpdate(self, elapsed)
     TauntMasterMini_UpdateThreat(self)
     TauntMasterMini_UpdateHealth(self)
     TauntMasterMini_UpdateIcons(self)
-    TauntMasterMini_UpdateCooldowns(self)
     TauntMasterMini_UpdateRange(self)
-    TauntMasterMini_UpdateDirection(self)
 
     -- Pulse threat border alpha when flash is active
     if self._threatFlash and self._threatBorder then
@@ -1290,16 +1092,6 @@ local function TMM_CreateUnitButton(index)
     label:SetText('-')
     btn.name = label
 
-    -- Direction arrow: points toward this unit relative to the player
-    local arrow = btn:CreateTexture(name .. '_Arrow', 'OVERLAY')
-    local arrowSize = math.min((TMM_Get('height') or 30) - 4, 20)
-    arrow:SetSize(arrowSize, arrowSize)
-    arrow:SetPoint('CENTER', btn, 'CENTER', 0, 0)
-    arrow:SetTexture('Interface\\AddOns\\TauntMasterMini\\tmm_arrow')
-    arrow:SetVertexColor(1, 1, 1, 0.9)
-    arrow:Hide()
-    btn._dirArrow = arrow
-
     -- Role icon to the right of the bar, sized to match bar height
     -- Use a child Frame with its own texture so it renders independently
     local roleFrame = CreateFrame('Frame', name .. '_RoleFrame', btn)
@@ -1313,13 +1105,6 @@ local function TMM_CreateUnitButton(index)
     btn.tankicon = roleFrame    -- keep backward-compat field name
     btn._roleIcon = roleFrame
     btn._roleIconTex = roleIcon
-
-    local friendlyIcon = btn:CreateTexture(name .. '_TM_Friendly_Icon', 'OVERLAY')
-    friendlyIcon:SetSize(24, 24)
-    friendlyIcon:SetPoint('RIGHT', btn, 'RIGHT', 2, 0)
-    friendlyIcon:SetTexture('Interface/AddOns/TauntMasterMini/tm_friendly_icon8')
-    friendlyIcon:Hide()
-    btn.healicon = friendlyIcon
 
     -- Flashing threat border: pulses when unit has high threat (yellow/red)
     local border = CreateFrame('Frame', name .. '_ThreatBorder', btn, BackdropTemplateMixin and 'BackdropTemplate')
@@ -1344,62 +1129,6 @@ local function TMM_CreateUnitButton(index)
     oorOverlay:SetColorTexture(1, 0.1, 0.1, 0.4)
     oorOverlay:Hide()
     btn._oorOverlay = oorOverlay
-
-    -- Spell cooldown icons BELOW the bar.
-    -- Two square icons: left-click spell (left) and right-click spell (right).
-    -- Each has a spell icon texture with a cooldown sweep overlay.
-    local CD_ICON_SIZE = 18
-
-    local function SetupCooldownFrame(cd)
-        cd:SetDrawEdge(false)
-        cd:SetDrawBling(false)
-        cd:SetDrawSwipe(true)
-        cd:SetSwipeTexture('Interface/Cooldown/cooldown2')
-        cd:SetSwipeColor(0, 0, 0, 0.6)
-        cd:SetHideCountdownNumbers(true)
-        cd:SetReverse(false)
-    end
-
-    -- Left-click spell icon + cooldown
-    local cdIconLeft = CreateFrame('Frame', name .. '_CDIconLeft', btn)
-    cdIconLeft:SetSize(CD_ICON_SIZE, CD_ICON_SIZE)
-    cdIconLeft:SetPoint('TOPLEFT', btn, 'BOTTOMLEFT', 2, -1)
-    local cdIconLeftTex = cdIconLeft:CreateTexture(nil, 'ARTWORK')
-    cdIconLeftTex:SetAllPoints()
-    cdIconLeftTex:SetTexture('Interface/Icons/INV_Misc_QuestionMark')
-    cdIconLeft._iconTex = cdIconLeftTex
-    btn._cdIconLeft = cdIconLeft
-
-    local cdFrameLeft = CreateFrame('Cooldown', name .. '_CDLeft', cdIconLeft)
-    cdFrameLeft:SetAllPoints(cdIconLeft)
-    cdFrameLeft:SetFrameLevel(cdIconLeft:GetFrameLevel() + 1)
-    SetupCooldownFrame(cdFrameLeft)
-    btn._cdFrameLeft = cdFrameLeft
-
-    -- Right-click spell icon + cooldown
-    local cdIconRight = CreateFrame('Frame', name .. '_CDIconRight', btn)
-    cdIconRight:SetSize(CD_ICON_SIZE, CD_ICON_SIZE)
-    cdIconRight:SetPoint('LEFT', cdIconLeft, 'RIGHT', 2, 0)
-    local cdIconRightTex = cdIconRight:CreateTexture(nil, 'ARTWORK')
-    cdIconRightTex:SetAllPoints()
-    cdIconRightTex:SetTexture('Interface/Icons/INV_Misc_QuestionMark')
-    cdIconRight._iconTex = cdIconRightTex
-    btn._cdIconRight = cdIconRight
-
-    local cdFrameRight = CreateFrame('Cooldown', name .. '_CDRight', cdIconRight)
-    cdFrameRight:SetAllPoints(cdIconRight)
-    cdFrameRight:SetFrameLevel(cdIconRight:GetFrameLevel() + 1)
-    SetupCooldownFrame(cdFrameRight)
-    btn._cdFrameRight = cdFrameRight
-
-    -- Black background strip behind cooldown icons
-    local cdBg = btn:CreateTexture(name .. '_CDBg', 'BACKGROUND')
-    cdBg:SetPoint('TOPLEFT', btn, 'BOTTOMLEFT', 0, 0)
-    cdBg:SetPoint('TOPRIGHT', btn, 'BOTTOMRIGHT', 0, 0)
-    cdBg:SetHeight(CD_ICON_SIZE + 2)
-    cdBg:SetColorTexture(0, 0, 0, 0.85)
-    cdBg:Hide()
-    btn._cdBg = cdBg
 
     btn:SetScript('OnEvent', TauntMasterMini_Button_OnEvent)
     btn:SetScript('OnShow', TauntMasterMini_Button_OnShow)
@@ -1563,7 +1292,7 @@ TMM_RebuildRoster = function()
 
     local units = {}
     local num = GetNumGroupMembers()
-    local hideSelf = not TMM_showSelf
+    local hideSelf = not TMM_Get('showSelf')
     local filterDps = TMM_Get('hideDpsInRaid') and IsInRaid()
     if IsInRaid() and num > 0 then
         for i = 1, num do
@@ -1583,7 +1312,7 @@ TMM_RebuildRoster = function()
         if not hideSelf then table.insert(units, 'player') end
         for i = 1, num - 1 do table.insert(units, 'party' .. i) end
     else
-        table.insert(units, 'player')
+        if not hideSelf then table.insert(units, 'player') end
     end
 
     local perCol = TMM_Get('unitsPerColumn') or 10
@@ -1606,10 +1335,6 @@ TMM_RebuildRoster = function()
             TMMButtons[i]._roleIcon:SetSize(bh, bh)
             TMMButtons[i]._roleIcon:Hide()
         end
-        if TMMButtons[i]._dirArrow then
-            local arrowSize = math.min(bh - 4, 20)
-            TMMButtons[i]._dirArrow:SetSize(arrowSize, arrowSize)
-        end
     end
 
     for i = needed + 1, #TMMButtons do
@@ -1617,15 +1342,9 @@ TMM_RebuildRoster = function()
             TMMButtons[i]:Hide()
             if TMMButtons[i]._classIcon then TMMButtons[i]._classIcon:Hide() end
             if TMMButtons[i]._roleIcon then TMMButtons[i]._roleIcon:Hide() end
-            if TMMButtons[i]._cdBg then TMMButtons[i]._cdBg:Hide() end
-            if TMMButtons[i]._cdIconLeft then TMMButtons[i]._cdIconLeft:Hide() end
-            if TMMButtons[i]._cdIconRight then TMMButtons[i]._cdIconRight:Hide() end
         end
     end
 
-    -- Layout: accumulate Y per column so only the player's row gets
-    -- extra vertical space for cooldown icons (21px = 18px icon + 3px gap).
-    local showCD = TMM_Get('showCooldowns')
     local colY = {}  -- running Y offset per column
     local topOffset = 5
     if parent._dragHandle and parent._dragHandle:IsShown() then
@@ -1643,9 +1362,7 @@ TMM_RebuildRoster = function()
         -- Offset right by bar height + gap for class icon (left) and role icon (right)
         local cellW = bh + 2 + bw + 2 + bh  -- classIcon + gap + bar + gap + roleIcon
         btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + bh + 2 + col * (cellW + 6), -topOffset - yOff)
-        -- Advance Y: bar height + gap, plus cooldown space only for player
-        local cdExtra = (showCD and TMM_IsPlayer(unit)) and 21 or 0
-        colY[col] = yOff + bh + 4 + cdExtra
+        colY[col] = yOff + bh + 4
         if colY[col] > totalH then totalH = colY[col] end
         btn:SetAttribute('unit', unit)
         TMM_ConfigureClickAction(btn, unit)
@@ -1930,10 +1647,19 @@ TMM_CreateOrInitUI = function()
             title:SetText(label)
             y = y - 20
 
+            -- Spell icon to the left of the button
+            local iconFrame = CreateFrame('Frame', nil, f)
+            iconFrame:SetSize(24, 24)
+            iconFrame:SetPoint('TOPLEFT', 16, y)
+            local iconTex = iconFrame:CreateTexture(nil, 'ARTWORK')
+            iconTex:SetAllPoints()
+            iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- trim default icon border
+
             local button = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
-            button:SetPoint('TOPLEFT', 16, y)
+            button:SetPoint('LEFT', iconFrame, 'RIGHT', 4, 0)
             button:SetSize(200, 24)
             button.getterFunction = get
+            button._spellIcon = iconTex
             button.setterFunction = function(value)
                 set(value)
                 button:refreshText()
@@ -1942,8 +1668,11 @@ TMM_CreateOrInitUI = function()
                 local value = get()
                 if not value or value == '' then
                     self:SetText('Select Spell')
+                    self._spellIcon:SetTexture('Interface/Icons/INV_Misc_QuestionMark')
                 else
                     self:SetText(value)
+                    local icon = TMM_GetSpellIcon(value)
+                    self._spellIcon:SetTexture(icon or 'Interface/Icons/INV_Misc_QuestionMark')
                 end
             end
             button:refreshText()
@@ -2009,7 +1738,7 @@ TMM_CreateOrInitUI = function()
             return TMM_GetLeftSpell()
         end, function(val)
             TauntMasterMiniDBChar.leftClickSpell = val
-            TMM_spellIconCache = {}
+            wipe(TMM_spellIconCache)
             if InCombatLockdown() then
                 TauntMasterMini_Header._tmmPendingRebuild = 1
             else
@@ -2021,7 +1750,7 @@ TMM_CreateOrInitUI = function()
             return TMM_GetRightSpell()
         end, function(val)
             TauntMasterMiniDBChar.rightClickSpell = val
-            TMM_spellIconCache = {}
+            wipe(TMM_spellIconCache)
             if InCombatLockdown() then
                 TauntMasterMini_Header._tmmPendingRebuild = 1
             else
@@ -2037,10 +1766,15 @@ TMM_CreateOrInitUI = function()
             if val then TMMMinimapBtn_Show() else TMMMinimapBtn_Hide() end
         end)
 
-        AddCheck('Show Cooldowns', function()
-            return TMM_Get('showCooldowns')
+        AddCheck('Show Names on Bars', function()
+            return TMM_Get('showNames')
         end, function(val)
-            TMM_Set('showCooldowns', val)
+            TMM_Set('showNames', val)
+            for _, btn in ipairs(TMMButtons) do
+                if btn:IsShown() then
+                    TauntMasterMini_Button_OnShow(btn)
+                end
+            end
         end)
 
         AddCheck('Use Class Colours on Bars', function()
@@ -2054,21 +1788,10 @@ TMM_CreateOrInitUI = function()
             end
         end)
 
-        AddCheck('Direction Arrows (open world only, replaces names)', function()
-            return TMM_Get('showDirectionArrow')
-        end, function(val)
-            TMM_Set('showDirectionArrow', val)
-            for _, btn in ipairs(TMMButtons) do
-                if btn:IsShown() then
-                    TauntMasterMini_Button_OnShow(btn)
-                end
-            end
-        end)
-
         AddCheck('Show Self', function()
-            return TMM_showSelf
+            return TMM_Get('showSelf')
         end, function(val)
-            TMM_showSelf = val
+            TMM_Set('showSelf', val)
             if InCombatLockdown() then
                 TauntMasterMini_Header._tmmPendingRebuild = 1
             else
@@ -2133,6 +1856,60 @@ TMM_CreateOrInitUI = function()
             return TMM_Get('pullAlertPartyChat') ~= false
         end, function(val)
             TMM_Set('pullAlertPartyChat', val)
+        end)
+
+        -- Reset Defaults button
+        local resetBtn = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
+        resetBtn:SetSize(130, 22)
+        resetBtn:SetPoint('BOTTOM', 0, 38)
+        resetBtn:SetText('Reset Defaults')
+        resetBtn:SetScript('OnClick', function()
+            if resetBtn._confirmPending then
+                -- Second click: actually reset
+                resetBtn._confirmPending = nil
+                TauntMasterMiniDBChar = nil
+                TMM_EnsureDefaults()
+                TMM_ApplyDefaultsForClass()
+                TMM_CopyDefaultsToChar()
+                wipe(TMM_spellIconCache)
+                -- Reset position
+                if TauntMasterMini_Header then
+                    TauntMasterMini_Header:ClearAllPoints()
+                    TauntMasterMini_Header:SetPoint('CENTER', UIParent, 'CENTER', 0, 0)
+                    TMM_SaveHeaderPosition()
+                end
+                TMM_UpdateLockState()
+                -- Refresh option panel controls
+                if TMMOptionsMenu then
+                    if TMMOptionsMenu._leftSpellBtn and TMMOptionsMenu._leftSpellBtn.refreshText then
+                        TMMOptionsMenu._leftSpellBtn:refreshText()
+                    end
+                    if TMMOptionsMenu._rightSpellBtn and TMMOptionsMenu._rightSpellBtn.refreshText then
+                        TMMOptionsMenu._rightSpellBtn:refreshText()
+                    end
+                    for _, cb in ipairs(TMMOptionsMenu._tmmChecks or {}) do
+                        if cb._tmmGetter then cb:SetChecked(cb._tmmGetter()) end
+                    end
+                    for _, s in ipairs(TMMOptionsMenu._tmmSliders or {}) do
+                        if s._tmmGetter then s:SetValue(s._tmmGetter()) end
+                    end
+                end
+                if not InCombatLockdown() then
+                    TMM_RebuildRoster()
+                end
+                resetBtn:SetText('Reset Defaults')
+                print('|cFFFF0000TauntMasterMini:|r All settings for this character have been reset to defaults.')
+            else
+                -- First click: show warning, wait for confirm
+                resetBtn._confirmPending = true
+                resetBtn:SetText('|cFFFF0000Confirm Reset?|r')
+                C_Timer.After(5, function()
+                    if resetBtn._confirmPending then
+                        resetBtn._confirmPending = nil
+                        resetBtn:SetText('Reset Defaults')
+                    end
+                end)
+            end
         end)
 
         local close = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
@@ -2257,9 +2034,6 @@ TMM_CreateOrInitUI = function()
 
         header._skullBtn = skullBtn
 
-        -- Restore saved position
-        TMM_RestoreHeaderPosition()
-
         header:SetScript('OnEvent', function(self, event, ...)
             if event == 'ADDON_LOADED' and ... == addonName then
                 -- SavedVariables are now restored — this is the FIRST safe
@@ -2268,6 +2042,9 @@ TMM_CreateOrInitUI = function()
                 TMM_ApplyDefaultsForClass()
                 TMM_CopyDefaultsToChar()
                 TMM_UpdateLockState()
+
+                -- Restore saved position
+                TMM_RestoreHeaderPosition()
 
                 -- Apply saved frame size
                 local savedW = TMM_Get('width')

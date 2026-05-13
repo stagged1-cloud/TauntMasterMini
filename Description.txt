@@ -1,5 +1,5 @@
 TauntMasterMini – Threat Management Addon for Tanks
-Version 6.6.0 | Updated for Midnight Pre-Patch 12.0.0
+Version 6.7.0 | Updated for Midnight Pre-Patch 12.0.0
 
 ================================================================================
 
@@ -48,9 +48,9 @@ Visual Indicators
     left-click spell, right half for right-click spell
   • Out-of-range indicator: red tint overlay appears when the spell target
     is beyond range
-  • Tank role icon: shield on players assigned the Tank role
-  • Friendly target warning: icon when a group member is targeting a friendly
-    unit instead of an enemy
+  • Role icons on every player bar: Tank / Healer / DPS shown via the LFG
+    role texture sheet; falls back to DPS when role is unassigned and
+    infers Tank/Healer from spec where possible
 
 Pull Alerts & First-Pull Detection
   • Flash notification when a non-tank party member grabs aggro — a red
@@ -131,9 +131,8 @@ KEY FEATURES AT A GLANCE
     and optional group chat announce; distinct "1st Pull" notification
   ✓ Class-aware defaults — auto-selects the correct taunt for all six tank
     specs
-  ✓ Tank role indicators — shield icon highlights assigned tanks at a glance
-  ✓ Friendly-target warning — icon shows when a player is targeting a
-    friendly unit
+  ✓ Role icons on every bar — Tank / Healer / DPS shown via LFG texture
+    sheet; spec-aware fallback for unassigned roles
   ✓ Show Self toggle — hide your own bar to free space; resets to shown
     on reload
   ✓ Flexible layout — adjustable button width/height, units per column, and
