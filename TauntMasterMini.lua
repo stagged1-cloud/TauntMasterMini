@@ -39,6 +39,16 @@ local TMM_TEST_CLASSES = {
     'SHAMAN', 'MAGE', 'WARLOCK', 'MONK', 'DRUID', 'DEMONHUNTER', 'EVOKER',
 }
 local TMM_TEST_ROLES = { 'TANK', 'HEALER', 'DAMAGER' }
+-- Known interrupt abilities across all classes/specs, for filtering the
+-- Interrupt Spell picker. Name-keyed (matches how spells are stored).
+local TMM_INTERRUPTS = {
+    ['Pummel'] = true, ['Mind Freeze'] = true, ['Skull Bash'] = true,
+    ['Kick'] = true, ['Rebuke'] = true, ['Counterspell'] = true,
+    ['Spell Lock'] = true, ['Wind Shear'] = true, ['Disrupt'] = true,
+    ["Avenger's Shield"] = true, ['Silence'] = true, ['Solar Beam'] = true,
+    ['Muzzle'] = true, ['Quell'] = true, ['Spear Hand Strike'] = true,
+    ['Counter Shot'] = true,
+}
 
 -- Find the button assigned to a given unit token (e.g. "party1", "raid3")
 local function TMM_FindButtonForUnit(unit)
@@ -75,6 +85,9 @@ local DEFAULTS = {
     compactMode = false,
     castFlash = true,
     tauntCDIndicator = true,
+    interruptSpell = '',
+    showInterruptBtn = true,
+    interruptSize = 20,
 }
 
 -- Forward declarations
@@ -217,6 +230,10 @@ end
 
 local function TMM_GetRightSpell()
     return TMM_Get('rightClickSpell') or ''
+end
+
+local function TMM_GetInterruptSpell()
+    return TMM_Get('interruptSpell') or ''
 end
 
 local function TMM_MinimapSettings()
@@ -485,6 +502,16 @@ local function TMM_ShowSpellPicker(owner)
     if #spells == 0 then
         print('TauntMasterMini: No spells found. Spellbook may not be fully loaded yet - try again in a moment.')
         return
+    end
+
+    -- Optional per-dropdown filter (e.g. the Interrupt Spell picker only
+    -- lists known interrupt abilities).
+    if owner._spellFilter then
+        local filtered = {}
+        for _, s in ipairs(spells) do
+            if owner._spellFilter(s) then filtered[#filtered + 1] = s end
+        end
+        spells = filtered
     end
 
     -- Use modern dropdown API
@@ -1579,6 +1606,12 @@ TMM_RebuildRoster = function()
     local cols = math.min(maxCols, math.max(1, math.ceil(needed / perCol)))
     local handleExtra = (parent._dragHandle and parent._dragHandle:IsShown()) and DRAG_HANDLE_HEIGHT or 0
     parent:SetSize(10 + cols * (cellW + 6), 10 + totalH + handleExtra)
+
+    -- Refresh the interrupt button's macrotext/icon from clean, out-of-combat
+    -- code (RebuildRoster already early-returned if InCombatLockdown).
+    if TauntMasterMini_Header and TauntMasterMini_Header._configureInterrupt then
+        TauntMasterMini_Header._configureInterrupt()
+    end
 end
 
 TMM_DebugDump = function()
@@ -2093,6 +2126,21 @@ TMM_CreateOrInitUI = function()
             end
         end)
 
+        f._interruptSpellBtn = AddSpellDropdown('Interrupt Spell', function()
+            return TMM_GetInterruptSpell()
+        end, function(val)
+            TauntMasterMiniDBChar.interruptSpell = val
+            wipe(TMM_spellIconCache)
+            if InCombatLockdown() then
+                TauntMasterMini_Header._tmmPendingRebuild = 1
+            else
+                TMM_RebuildRoster()
+            end
+        end)
+        f._interruptSpellBtn._spellFilter = function(n)
+            return TMM_INTERRUPTS[n] == true
+        end
+
         curPage = pageDisplay
         AddCheck('Show Minimap Icon', function()
             return not (TMM_MinimapSettings().hide)
@@ -2135,6 +2183,15 @@ TMM_CreateOrInitUI = function()
             TMM_Set('tauntCDIndicator', val)
             if TauntMasterMini_Header and TauntMasterMini_Header._updateTauntCDVisible then
                 TauntMasterMini_Header._updateTauntCDVisible()
+            end
+        end)
+
+        AddCheck('Show Interrupt Button  (set spell in Spells tab)', function()
+            return TMM_Get('showInterruptBtn') ~= false
+        end, function(val)
+            TMM_Set('showInterruptBtn', val)
+            if TauntMasterMini_Header and TauntMasterMini_Header._updateInterruptVisible then
+                TauntMasterMini_Header._updateInterruptVisible()
             end
         end)
 
@@ -2191,6 +2248,15 @@ TMM_CreateOrInitUI = function()
             TMM_Set('skullSize', v)
             if TauntMasterMini_Header and TauntMasterMini_Header._skullBtn then
                 TauntMasterMini_Header._skullBtn:SetSize(v, v)
+            end
+        end)
+
+        AddSlider('Interrupt Button Size', 12, 40, 1, function()
+            return TMM_Get('interruptSize') or 20
+        end, function(v)
+            TMM_Set('interruptSize', v)
+            if TauntMasterMini_Header and TauntMasterMini_Header._interruptBtn then
+                TauntMasterMini_Header._interruptBtn:SetSize(v, v)
             end
         end)
 
@@ -2256,6 +2322,9 @@ TMM_CreateOrInitUI = function()
                     end
                     if TMMOptionsMenu._rightSpellBtn and TMMOptionsMenu._rightSpellBtn.refreshText then
                         TMMOptionsMenu._rightSpellBtn:refreshText()
+                    end
+                    if TMMOptionsMenu._interruptSpellBtn and TMMOptionsMenu._interruptSpellBtn.refreshText then
+                        TMMOptionsMenu._interruptSpellBtn:refreshText()
                     end
                     for _, cb in ipairs(TMMOptionsMenu._tmmChecks or {}) do
                         if cb._tmmGetter then cb:SetChecked(cb._tmmGetter()) end
@@ -2482,6 +2551,104 @@ TMM_CreateOrInitUI = function()
         end)
         header._cdTracker = cdTracker
 
+        -- Interrupt slot: a secure one-button cast of the configured
+        -- interrupt on your current target. macrotext is set ONLY from
+        -- clean, combat-guarded code (header._configureInterrupt, driven by
+        -- ADDON_LOADED / TMM_RebuildRoster) — never from a tainted PreClick
+        -- (the 6.5.1 lesson). [Paranoid]
+        local TMM_INT_CD = {
+            ['Pummel'] = 15, ['Mind Freeze'] = 15, ['Skull Bash'] = 15,
+            ['Kick'] = 15, ['Rebuke'] = 15, ['Counterspell'] = 24,
+            ['Spell Lock'] = 24, ['Wind Shear'] = 12, ['Disrupt'] = 15,
+            ['Avenger\'s Shield'] = 15, ['Silence'] = 45, ['Solar Beam'] = 60,
+        }
+        local intBtn = CreateFrame('Button', 'TMMInterruptBtn', UIParent,
+            'SecureActionButtonTemplate')
+        intBtn:SetSize(TMM_Get('interruptSize') or 20, TMM_Get('interruptSize') or 20)
+        intBtn:SetPoint('LEFT', rightCD, 'RIGHT', 4, 0)
+        intBtn:SetFrameStrata(header:GetFrameStrata())
+        intBtn:SetFrameLevel(header:GetFrameLevel() + 6)
+        intBtn:SetAttribute('type', 'macro')
+        intBtn:SetAttribute('macrotext', '')
+        intBtn:RegisterForClicks('AnyUp')
+        hooksecurefunc(intBtn, 'SetNormalTexture', function(self)
+            local n = self:GetNormalTexture(); if n then n:SetAlpha(0) end
+        end)
+        do local n = intBtn:GetNormalTexture(); if n then n:SetAlpha(0) end end
+        local intIcon = intBtn:CreateTexture(nil, 'ARTWORK')
+        intIcon:SetAllPoints()
+        intIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        local intHl = intBtn:CreateTexture(nil, 'HIGHLIGHT')
+        intHl:SetAllPoints()
+        intHl:SetColorTexture(1, 1, 1, 0.2)
+        local intSwipe = CreateFrame('Cooldown', 'TMMInterruptSwipe', intBtn,
+            'CooldownFrameTemplate')
+        intSwipe:SetAllPoints()
+        intSwipe:SetDrawEdge(false)
+        intBtn._readyAt = 0
+
+        local function TMM_UpdateInterruptVisible()
+            local on = (TMM_Get('showInterruptBtn') ~= false)
+                and (TMM_GetInterruptSpell() ~= '')
+            if on and header:IsShown() then intBtn:Show() else intBtn:Hide() end
+        end
+        header._updateInterruptVisible = TMM_UpdateInterruptVisible
+
+        hooksecurefunc(header, 'Show', function() TMM_UpdateInterruptVisible() end)
+        hooksecurefunc(header, 'Hide', function() intBtn:Hide() end)
+
+        -- Set macrotext + icon from the configured spell. Never SetAttribute
+        -- in combat (deferred; RebuildRoster re-runs this once combat ends).
+        header._configureInterrupt = function()
+            local sp = TMM_GetInterruptSpell()
+            intIcon:SetTexture((sp ~= '' and TMM_GetSpellIcon(sp))
+                or 'Interface/Icons/INV_Misc_QuestionMark')
+            if InCombatLockdown() then return end
+            if sp ~= '' then
+                intBtn:SetAttribute('macrotext', '/cast [@target,harm,nodead] ' .. sp)
+            else
+                intBtn:SetAttribute('macrotext', '')
+            end
+            TMM_UpdateInterruptVisible()
+        end
+        header._configureInterrupt()
+
+        intBtn:SetScript('OnUpdate', function(self, e)
+            self._t = (self._t or 0) + e
+            if self._t < 0.2 then return end
+            self._t = 0
+            if GetTime() >= (self._readyAt or 0) then
+                intIcon:SetDesaturated(false); intIcon:SetVertexColor(1, 1, 1, 1)
+            else
+                intIcon:SetDesaturated(true); intIcon:SetVertexColor(0.6, 0.6, 0.6, 1)
+            end
+        end)
+
+        intBtn:SetScript('OnEnter', function(self)
+            GameTooltip:SetOwner(self, 'ANCHOR_TOP')
+            GameTooltip:SetText('Interrupt', 1, 1, 1)
+            local sp = TMM_GetInterruptSpell()
+            GameTooltip:AddLine(sp ~= '' and ('Casts ' .. sp .. ' on your target.')
+                or 'Set an interrupt spell in Options > Spells.', 0.8, 0.8, 0.8, true)
+            GameTooltip:Show()
+        end)
+        intBtn:SetScript('OnLeave', GameTooltip_Hide)
+
+        local intTracker = CreateFrame('Frame')
+        intTracker:RegisterUnitEvent('UNIT_SPELLCAST_SUCCEEDED', 'player')
+        intTracker:SetScript('OnEvent', function(_, _, _, _, spellID)
+            local nm = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
+            local cur = TMM_GetInterruptSpell()
+            if nm and cur ~= '' and nm == cur then
+                local now = GetTime()
+                local d = TMM_INT_CD[nm] or 15
+                intBtn._readyAt = now + d
+                intSwipe:SetCooldown(now, d)
+            end
+        end)
+        header._interruptBtn = intBtn
+        header._intTracker = intTracker
+
         header:SetScript('OnEvent', function(self, event, ...)
             if event == 'ADDON_LOADED' and ... == addonName then
                 -- SavedVariables are now restored — this is the FIRST safe
@@ -2492,6 +2659,7 @@ TMM_CreateOrInitUI = function()
                 TMM_UpdateLockState()
                 TMM_ApplyFrameStyle()
                 if self._updateTauntCDVisible then self._updateTauntCDVisible() end
+                if self._updateInterruptVisible then self._updateInterruptVisible() end
 
                 -- Restore saved position
                 TMM_RestoreHeaderPosition()
@@ -2512,6 +2680,12 @@ TMM_CreateOrInitUI = function()
                     self._skullBtn:SetSize(savedSkull, savedSkull)
                 end
 
+                -- Apply saved interrupt button size
+                local savedInt = TMM_Get('interruptSize')
+                if self._interruptBtn and savedInt then
+                    self._interruptBtn:SetSize(savedInt, savedInt)
+                end
+
                 -- Show/hide header based on saved preference
                 if TauntMasterMiniDBChar.hideTM then
                     self:Hide()
@@ -2526,6 +2700,9 @@ TMM_CreateOrInitUI = function()
                     end
                     if TMMOptionsMenu._rightSpellBtn and TMMOptionsMenu._rightSpellBtn.refreshText then
                         TMMOptionsMenu._rightSpellBtn:refreshText()
+                    end
+                    if TMMOptionsMenu._interruptSpellBtn and TMMOptionsMenu._interruptSpellBtn.refreshText then
+                        TMMOptionsMenu._interruptSpellBtn:refreshText()
                     end
                     for _, cb in ipairs(TMMOptionsMenu._tmmChecks or {}) do
                         if cb._tmmGetter then cb:SetChecked(cb._tmmGetter()) end
