@@ -74,6 +74,7 @@ local DEFAULTS = {
     sortMode = 'group',
     compactMode = false,
     castFlash = true,
+    tauntCDIndicator = true,
 }
 
 -- Forward declarations
@@ -2128,6 +2129,15 @@ TMM_CreateOrInitUI = function()
             TMM_Set('castFlash', val)
         end)
 
+        AddCheck('Show Spell Cooldown Indicators  (left & right of skull)', function()
+            return TMM_Get('tauntCDIndicator') ~= false
+        end, function(val)
+            TMM_Set('tauntCDIndicator', val)
+            if TauntMasterMini_Header and TauntMasterMini_Header._updateTauntCDVisible then
+                TauntMasterMini_Header._updateTauntCDVisible()
+            end
+        end)
+
         AddCheck('Use Class Colours on Bars', function()
             return TMM_Get('useClassColours')
         end, function(val)
@@ -2394,6 +2404,84 @@ TMM_CreateOrInitUI = function()
 
         header._skullBtn = skullBtn
 
+        -- Spell cooldown indicators (one per click spell), flanking the
+        -- skull: left-click spell to the LEFT of the skull, right-click
+        -- spell to the RIGHT. EVENT-BASED ONLY — never calls the secret
+        -- C_Spell.GetSpellCooldown. We watch the player's own
+        -- UNIT_SPELLCAST_SUCCEEDED, record GetTime(), and feed our own
+        -- numbers to a Cooldown widget (C-side, taint-allowed). Durations
+        -- come from a small known-CD table; 8s is the baseline for the
+        -- six tank taunts and a sane default for anything unknown.
+        local TMM_SPELL_CD = {
+            ['Taunt'] = 8, ['Hand of Reckoning'] = 8, ['Dark Command'] = 8,
+            ['Growl'] = 8, ['Provoke'] = 8, ['Torment'] = 8,
+        }
+        local TMM_DEFAULT_CD = 8
+
+        local function TMM_MakeCDIndicator(idName, getter)
+            local fr = CreateFrame('Frame', idName, header)
+            fr:SetSize(skullSz, skullSz)
+            fr:SetFrameLevel(header:GetFrameLevel() + 25)
+            local ic = fr:CreateTexture(nil, 'ARTWORK')
+            ic:SetAllPoints()
+            ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            local sw = CreateFrame('Cooldown', idName .. 'Swipe', fr, 'CooldownFrameTemplate')
+            sw:SetAllPoints()
+            sw:SetDrawEdge(false)
+            fr._getter, fr._iconTex, fr._swipe, fr._readyAt = getter, ic, sw, 0
+            -- Throttled: keep the icon in sync with the configured spell and
+            -- brighten/dim by readiness. Only GetTime()/our own numbers.
+            fr:SetScript('OnUpdate', function(self, elapsed)
+                self._t = (self._t or 0) + elapsed
+                if self._t < 0.2 then return end
+                self._t = 0
+                local sp = self._getter()
+                self._iconTex:SetTexture((sp and sp ~= '' and TMM_GetSpellIcon(sp))
+                    or 'Interface/Icons/INV_Misc_QuestionMark')
+                if GetTime() >= (self._readyAt or 0) then
+                    self._iconTex:SetDesaturated(false)
+                    self._iconTex:SetVertexColor(1, 1, 1, 1)
+                else
+                    self._iconTex:SetDesaturated(true)
+                    self._iconTex:SetVertexColor(0.6, 0.6, 0.6, 1)
+                end
+            end)
+            return fr
+        end
+
+        local leftCD = TMM_MakeCDIndicator('TMMLeftCD', TMM_GetLeftSpell)
+        leftCD:SetPoint('RIGHT', skullBtn, 'LEFT', -4, 0)
+        local rightCD = TMM_MakeCDIndicator('TMMRightCD', TMM_GetRightSpell)
+        rightCD:SetPoint('LEFT', skullBtn, 'RIGHT', 4, 0)
+        header._leftCD, header._rightCD = leftCD, rightCD
+
+        local function TMM_UpdateTauntCDVisible()
+            local show = TMM_Get('tauntCDIndicator') ~= false
+            if show then leftCD:Show(); rightCD:Show()
+            else leftCD:Hide(); rightCD:Hide() end
+        end
+        header._updateTauntCDVisible = TMM_UpdateTauntCDVisible
+        TMM_UpdateTauntCDVisible()
+
+        local cdTracker = CreateFrame('Frame')
+        cdTracker:RegisterUnitEvent('UNIT_SPELLCAST_SUCCEEDED', 'player')
+        cdTracker:SetScript('OnEvent', function(_, _, _, _, spellID)
+            local castName = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
+            if not castName then return end
+            local now = GetTime()
+            if castName == TMM_GetLeftSpell() then
+                local d = TMM_SPELL_CD[castName] or TMM_DEFAULT_CD
+                leftCD._readyAt = now + d
+                leftCD._swipe:SetCooldown(now, d)
+            end
+            if castName == TMM_GetRightSpell() then
+                local d = TMM_SPELL_CD[castName] or TMM_DEFAULT_CD
+                rightCD._readyAt = now + d
+                rightCD._swipe:SetCooldown(now, d)
+            end
+        end)
+        header._cdTracker = cdTracker
+
         header:SetScript('OnEvent', function(self, event, ...)
             if event == 'ADDON_LOADED' and ... == addonName then
                 -- SavedVariables are now restored — this is the FIRST safe
@@ -2403,6 +2491,7 @@ TMM_CreateOrInitUI = function()
                 TMM_CopyDefaultsToChar()
                 TMM_UpdateLockState()
                 TMM_ApplyFrameStyle()
+                if self._updateTauntCDVisible then self._updateTauntCDVisible() end
 
                 -- Restore saved position
                 TMM_RestoreHeaderPosition()
