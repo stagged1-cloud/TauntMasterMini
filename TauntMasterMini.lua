@@ -62,6 +62,8 @@ local DEFAULTS = {
     pullAlertEnabled = true,
     pullAlertPartyChat = true,
     firstPullNotification = true,
+    scale = 1.0,
+    opacity = 1.0,
 }
 
 -- Forward declarations
@@ -144,6 +146,20 @@ end
 
 local function TMM_Set(key, val)
     if TauntMasterMiniDBChar then TauntMasterMiniDBChar[key] = val end
+end
+
+-- Apply whole-frame scale + opacity to the header (children inherit both).
+-- SetScale/SetAlpha are NOT combat-protected, so this is safe in combat and
+-- needs no rebuild deferral. Clamped so the frame can never vanish entirely.
+local function TMM_ApplyFrameStyle()
+    local hdr = TauntMasterMini_Header
+    if not hdr then return end
+    local s = tonumber(TMM_Get('scale')) or 1.0
+    local a = tonumber(TMM_Get('opacity')) or 1.0
+    s = math.max(0.5, math.min(1.5, s))
+    a = math.max(0.2, math.min(1.0, a))
+    hdr:SetScale(s)
+    hdr:SetAlpha(a)
 end
 
 local function TMM_GetLeftSpell()
@@ -1321,6 +1337,7 @@ end
 
 TMM_RebuildRoster = function()
     TMM_EnsureDefaults()
+    TMM_ApplyFrameStyle()  -- combat-safe; run before the lockdown early-return
     if InCombatLockdown() then return end
     local parent = TauntMasterMini_Header or UIParent
 
@@ -1627,7 +1644,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 800)
+        f:SetSize(360, 900)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1786,6 +1803,20 @@ TMM_CreateOrInitUI = function()
             else
                 TMM_RebuildRoster()
             end
+        end)
+
+        AddSlider('Frame Scale (%)', 50, 150, 5, function()
+            return math.floor((tonumber(TMM_Get('scale')) or 1.0) * 100 + 0.5)
+        end, function(v)
+            TMM_Set('scale', v / 100)
+            TMM_ApplyFrameStyle()
+        end)
+
+        AddSlider('Frame Opacity (%)', 20, 100, 5, function()
+            return math.floor((tonumber(TMM_Get('opacity')) or 1.0) * 100 + 0.5)
+        end, function(v)
+            TMM_Set('opacity', v / 100)
+            TMM_ApplyFrameStyle()
         end)
 
         f._leftSpellBtn = AddSpellDropdown('Left Click Spell', function()
@@ -2096,6 +2127,7 @@ TMM_CreateOrInitUI = function()
                 TMM_ApplyDefaultsForClass()
                 TMM_CopyDefaultsToChar()
                 TMM_UpdateLockState()
+                TMM_ApplyFrameStyle()
 
                 -- Restore saved position
                 TMM_RestoreHeaderPosition()
