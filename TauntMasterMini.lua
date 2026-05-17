@@ -1734,7 +1734,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 1050)
+        f:SetSize(380, 560)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1761,12 +1761,51 @@ TMM_CreateOrInitUI = function()
         -- SavedVariables are loaded (ADDON_LOADED fires after UI creation).
         f._tmmChecks = {}
         f._tmmSliders = {}
+        f._pages = {}
+        f._tabs = {}
 
-        local y = -50
+        -- Tab system: fixed-size window, one page visible at a time, so the
+        -- panel always fits on screen (replaces the old scroll-less tall list).
+        local PAGE_X, PAGE_Y = 10, -66
+        local PAGE_W, PAGE_H = 360, 430
+
+        local curPage  -- helpers below add controls to whichever page is current
+
+        local function SetPage(p)
+            for _, pg in ipairs(f._pages) do pg:Hide() end
+            for _, tb in ipairs(f._tabs) do
+                if tb._page == p then tb:LockHighlight() else tb:UnlockHighlight() end
+            end
+            p:Show()
+        end
+
+        local function NewPage(tabLabel)
+            local pg = CreateFrame('Frame', nil, f)
+            pg:SetPoint('TOPLEFT', PAGE_X, PAGE_Y)
+            pg:SetSize(PAGE_W, PAGE_H)
+            pg._y = -6
+            pg:Hide()
+            table.insert(f._pages, pg)
+            local idx = #f._pages
+            local tab = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
+            tab:SetSize(86, 22)
+            tab:SetPoint('TOPLEFT', 10 + (idx - 1) * 88, -40)
+            tab:SetText(tabLabel)
+            tab._page = pg
+            tab:SetScript('OnClick', function() SetPage(pg) end)
+            table.insert(f._tabs, tab)
+            return pg
+        end
+
+        local pageLayout  = NewPage('Layout')
+        local pageDisplay = NewPage('Display')
+        local pageSpells  = NewPage('Spells')
+        local pageAlerts  = NewPage('Alerts')
+
         local function AddCheck(label, get, set)
-            local cb = CreateFrame('CheckButton', nil, f, 'UICheckButtonTemplate')
+            local cb = CreateFrame('CheckButton', nil, curPage, 'UICheckButtonTemplate')
             cb.text:SetText(label)
-            cb:SetPoint('TOPLEFT', 16, y)
+            cb:SetPoint('TOPLEFT', 12, curPage._y)
             cb:SetChecked(get())
             cb._tmmGetter = get
             table.insert(f._tmmChecks, cb)
@@ -1778,13 +1817,13 @@ TMM_CreateOrInitUI = function()
                 end
                 set(self:GetChecked())
             end)
-            y = y - 28
+            curPage._y = curPage._y - 28
             return cb
         end
 
         local function AddSlider(label, minV, maxV, step, get, set)
-            local s = CreateFrame('Slider', nil, f, 'OptionsSliderTemplate')
-            s:SetPoint('TOPLEFT', 16, y)
+            local s = CreateFrame('Slider', nil, curPage, 'OptionsSliderTemplate')
+            s:SetPoint('TOPLEFT', 16, curPage._y)
             s:SetMinMaxValues(minV, maxV)
             s:SetValueStep(step)
             s:SetObeyStepOnDrag(true)
@@ -1798,7 +1837,7 @@ TMM_CreateOrInitUI = function()
                 if InCombatLockdown() then return end
                 set(math.floor(value + 0.5))
             end)
-            y = y - 48
+            curPage._y = curPage._y - 48
             return s
         end
 
@@ -1808,15 +1847,15 @@ TMM_CreateOrInitUI = function()
             role = 'By role', name = 'By name',
         }
         local function AddCycle(label, get, set)
-            local b = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
-            b:SetPoint('TOPLEFT', 16, y)
+            local b = CreateFrame('Button', nil, curPage, 'UIPanelButtonTemplate')
+            b:SetPoint('TOPLEFT', 16, curPage._y)
             b:SetSize(320, 24)
             local function upd()
                 local v = get()
                 b:SetText(label .. ': ' .. (SORT_LABEL[v] or tostring(v)))
             end
             upd()
-            -- Panel is hidden until /tm; refresh on show so it always
+            -- Page is hidden until shown; refresh on show so it always
             -- reflects the loaded SavedVariables value.
             b:SetScript('OnShow', upd)
             b:SetScript('OnClick', function()
@@ -1831,25 +1870,25 @@ TMM_CreateOrInitUI = function()
                 set(SORT_ORDER[(idx % #SORT_ORDER) + 1])
                 upd()
             end)
-            y = y - 30
+            curPage._y = curPage._y - 30
             return b
         end
 
         local function AddSpellDropdown(label, get, set)
-            local title = f:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
-            title:SetPoint('TOPLEFT', 16, y)
-            title:SetText(label)
-            y = y - 20
+            local lbl = curPage:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+            lbl:SetPoint('TOPLEFT', 16, curPage._y)
+            lbl:SetText(label)
+            curPage._y = curPage._y - 20
 
             -- Spell icon to the left of the button
-            local iconFrame = CreateFrame('Frame', nil, f)
+            local iconFrame = CreateFrame('Frame', nil, curPage)
             iconFrame:SetSize(24, 24)
-            iconFrame:SetPoint('TOPLEFT', 16, y)
+            iconFrame:SetPoint('TOPLEFT', 16, curPage._y)
             local iconTex = iconFrame:CreateTexture(nil, 'ARTWORK')
             iconTex:SetAllPoints()
             iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- trim default icon border
 
-            local button = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
+            local button = CreateFrame('Button', nil, curPage, 'UIPanelButtonTemplate')
             button:SetPoint('LEFT', iconFrame, 'RIGHT', 4, 0)
             button:SetSize(200, 24)
             button.getterFunction = get
@@ -1877,12 +1916,13 @@ TMM_CreateOrInitUI = function()
                 end
                 TMM_ShowSpellPicker(self)
             end)
-            y = y - 34
+            curPage._y = curPage._y - 34
             return button
         end
 
 
         TMMOptionsMenu = f
+        curPage = pageLayout
 
         AddSlider('Button Width', 50, 200, 1, function()
             return TMM_Get('width') or 75
@@ -1953,6 +1993,7 @@ TMM_CreateOrInitUI = function()
             end
         end)
 
+        curPage = pageSpells
         f._leftSpellBtn = AddSpellDropdown('Left Click Spell', function()
             return TMM_GetLeftSpell()
         end, function(val)
@@ -1977,7 +2018,7 @@ TMM_CreateOrInitUI = function()
             end
         end)
 
-        y = y - 12
+        curPage = pageDisplay
         AddCheck('Show Minimap Icon', function()
             return not (TMM_MinimapSettings().hide)
         end, function(val)
@@ -2059,7 +2100,7 @@ TMM_CreateOrInitUI = function()
             TMM_SetLocked(val)
         end)
 
-        y = y - 6
+        curPage._y = curPage._y - 6
         AddSlider('Skull Marker Size', 12, 40, 1, function()
             return TMM_Get('skullSize') or 20
         end, function(v)
@@ -2070,11 +2111,11 @@ TMM_CreateOrInitUI = function()
         end)
 
         -- Pull Alert section
-        y = y - 14
-        local pullHeader = f:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
-        pullHeader:SetPoint('TOPLEFT', 16, y)
+        curPage = pageAlerts
+        local pullHeader = pageAlerts:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+        pullHeader:SetPoint('TOPLEFT', 16, curPage._y)
         pullHeader:SetText('|cFFFF9900Pull Alerts|r')
-        y = y - 22
+        curPage._y = curPage._y - 24
 
         AddCheck('Alert when non-tank pulls  (flash + local chat)', function()
             return TMM_Get('pullAlertEnabled') ~= false
@@ -2099,6 +2140,9 @@ TMM_CreateOrInitUI = function()
         end, function(val)
             TMM_Set('pullAlertSound', val)
         end)
+
+        -- Show the Layout tab by default
+        SetPage(pageLayout)
 
         -- Reset Defaults button
         local resetBtn = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
