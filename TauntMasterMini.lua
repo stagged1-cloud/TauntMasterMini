@@ -65,6 +65,7 @@ local DEFAULTS = {
     scale = 1.0,
     opacity = 1.0,
     sortMode = 'group',
+    compactMode = false,
 }
 
 -- Forward declarations
@@ -849,7 +850,7 @@ function TauntMasterMini_Button_OnShow(self)
         if color and self._classBg then
             self._classBg:SetColorTexture(color.r * 0.3, color.g * 0.3, color.b * 0.3, 0.85)
         end
-        if self._classIcon and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class] then
+        if not TMM_Get('compactMode') and self._classIcon and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class] then
             self._classIcon:SetTexCoord(unpack(CLASS_ICON_TCOORDS[class]))
             self._classIcon:Show()
         end
@@ -864,7 +865,7 @@ function TauntMasterMini_Button_OnShow(self)
 
     -- Show or hide names on bars
     if self.name then
-        if TMM_Get('showNames') then
+        if TMM_Get('showNames') and not TMM_Get('compactMode') then
             self.name:Show()
             local name = UnitName(unit)
             if name then
@@ -1015,6 +1016,14 @@ end
 function TauntMasterMini_UpdateIcons(button)
     local unit = button:GetAttribute('unit')
     if not unit or not UnitExists(unit) then return end
+
+    -- Compact mode: no class/role icons. Enforced every tick because
+    -- OnUpdate calls this ~10fps and would otherwise re-show the role icon.
+    if TMM_Get('compactMode') then
+        if button._classIcon then button._classIcon:Hide() end
+        if button._roleIcon then button._roleIcon:Hide() end
+        return
+    end
 
     -- Role icon: show Tank/Healer/DPS based on assigned group role
     if button._roleIcon and button._roleIconTex then
@@ -1424,13 +1433,20 @@ TMM_RebuildRoster = function()
     local bw = TMM_Get('width') or 75
     local bh = TMM_Get('height') or 30
 
+    -- Compact (icon-only) mode: each unit is a bh x bh threat-coloured
+    -- square, no class/role icon columns and no name.
+    local compact = TMM_Get('compactMode')
+    local ebw = compact and bh or bw                       -- effective bar width
+    local leftPad = compact and 0 or (bh + 2)              -- class-icon gutter (full only)
+    local cellW = compact and bh or (bh + 2 + bw + 2 + bh) -- classIcon+gap+bar+gap+roleIcon
+
     local needed = math.min(#units, perCol * maxCols)
 
     for i = 1, needed do
         if not TMMButtons[i] then
             TMMButtons[i] = TMM_CreateUnitButton(i)
         end
-        TMMButtons[i]:SetSize(bw, bh)
+        TMMButtons[i]:SetSize(ebw, bh)
         if TMMButtons[i]._classIcon then
             TMMButtons[i]._classIcon:SetSize(bh, bh)
             TMMButtons[i]._classIcon:Hide()
@@ -1464,9 +1480,7 @@ TMM_RebuildRoster = function()
         local col = math.floor((i - 1) / perCol)
         if not colY[col] then colY[col] = 0 end
         local yOff = colY[col]
-        -- Offset right by bar height + gap for class icon (left) and role icon (right)
-        local cellW = bh + 2 + bw + 2 + bh  -- classIcon + gap + bar + gap + roleIcon
-        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + bh + 2 + col * (cellW + 6), -topOffset - yOff)
+        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + leftPad + col * (cellW + 6), -topOffset - yOff)
         colY[col] = yOff + bh + 4
         if colY[col] > totalH then totalH = colY[col] end
         btn:SetAttribute('unit', unit)
@@ -1475,7 +1489,7 @@ TMM_RebuildRoster = function()
         btn:Show()
         TauntMasterMini_Button_OnShow(btn)
         -- Test mode: label bars Test 1..N (OnShow set the real player name)
-        if TMM_TestCount > 0 and btn.name then
+        if TMM_TestCount > 0 and btn.name and not compact then
             btn.name:Show()
             btn.name:SetText('Test ' .. i)
             btn.name:SetTextColor(1, 1, 1)
@@ -1484,7 +1498,6 @@ TMM_RebuildRoster = function()
 
     local cols = math.min(maxCols, math.max(1, math.ceil(needed / perCol)))
     local handleExtra = (parent._dragHandle and parent._dragHandle:IsShown()) and DRAG_HANDLE_HEIGHT or 0
-    local cellW = bh + 2 + bw + 2 + bh  -- classIcon + gap + bar + gap + roleIcon
     parent:SetSize(10 + cols * (cellW + 6), 10 + totalH + handleExtra)
 end
 
@@ -1685,7 +1698,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 940)
+        f:SetSize(360, 980)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1944,6 +1957,17 @@ TMM_CreateOrInitUI = function()
                 if btn:IsShown() then
                     TauntMasterMini_Button_OnShow(btn)
                 end
+            end
+        end)
+
+        AddCheck('Compact Mode  (icon-only squares, no names)', function()
+            return TMM_Get('compactMode') or false
+        end, function(val)
+            TMM_Set('compactMode', val)
+            if InCombatLockdown() then
+                TauntMasterMini_Header._tmmPendingRebuild = 1
+            else
+                TMM_RebuildRoster()
             end
         end)
 
