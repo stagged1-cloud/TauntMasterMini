@@ -33,6 +33,12 @@ local TMM_TEST_COLORS = {
     { 0, 0.6, 1 },      -- blue
     { 1, 0.5, 0 },      -- orange
 }
+-- Pools for randomising test-mode bars (cosmetic only; no combat API).
+local TMM_TEST_CLASSES = {
+    'WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'DEATHKNIGHT',
+    'SHAMAN', 'MAGE', 'WARLOCK', 'MONK', 'DRUID', 'DEMONHUNTER', 'EVOKER',
+}
+local TMM_TEST_ROLES = { 'TANK', 'HEALER', 'DAMAGER' }
 
 -- Find the button assigned to a given unit token (e.g. "party1", "raid3")
 local function TMM_FindButtonForUnit(unit)
@@ -1027,6 +1033,36 @@ function TauntMasterMini_UpdateIcons(button)
         return
     end
 
+    -- Test mode: render the randomised class/role rolled at rebuild,
+    -- independent of the real (player) unit, so bars look like a mixed group.
+    if TMM_TestCount > 0 and button._testIndex then
+        local tc = button._testClass
+        if button._classIcon and tc and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[tc] then
+            button._classIcon:SetTexture('Interface\\WorldStateFrame\\Icons-Classes')
+            button._classIcon:SetTexCoord(unpack(CLASS_ICON_TCOORDS[tc]))
+            button._classIcon:Show()
+        end
+        if button._classBg then
+            local col = tc and RAID_CLASS_COLORS[tc]
+            if col then
+                button._classBg:SetColorTexture(col.r * 0.3, col.g * 0.3, col.b * 0.3, 0.85)
+            end
+        end
+        if button._roleIcon and button._roleIconTex then
+            local r = button._testRole
+            button._roleIconTex:SetTexture('Interface\\LFGFrame\\UI-LFG-ICON-ROLES')
+            if r == 'TANK' then
+                button._roleIconTex:SetTexCoord(0, 0.265625, 0.265625, 0.53125)
+            elseif r == 'HEALER' then
+                button._roleIconTex:SetTexCoord(0.265625, 0.53125, 0, 0.265625)
+            else
+                button._roleIconTex:SetTexCoord(0.265625, 0.53125, 0.265625, 0.53125)
+            end
+            button._roleIcon:Show()
+        end
+        return
+    end
+
     -- Role icon: show Tank/Healer/DPS based on assigned group role
     if button._roleIcon and button._roleIconTex then
         local role = UnitGroupRolesAssigned(unit)
@@ -1491,6 +1527,8 @@ TMM_RebuildRoster = function()
     for i = needed + 1, #TMMButtons do
         if TMMButtons[i] then
             TMMButtons[i]._testIndex = nil
+            TMMButtons[i]._testClass = nil
+            TMMButtons[i]._testRole = nil
             TMMButtons[i]:Hide()
             if TMMButtons[i]._classIcon then TMMButtons[i]._classIcon:Hide() end
             if TMMButtons[i]._roleIcon then TMMButtons[i]._roleIcon:Hide() end
@@ -1516,6 +1554,16 @@ TMM_RebuildRoster = function()
         if colY[col] > totalH then totalH = colY[col] end
         btn:SetAttribute('unit', unit)
         btn._testIndex = (TMM_TestCount > 0) and i or nil
+        if TMM_TestCount > 0 then
+            -- Randomise class/role per bar so the test layout looks like a
+            -- real mixed group instead of all-tank. Rolled once per rebuild
+            -- and stored, so the ~10fps icon refresh stays stable.
+            btn._testClass = TMM_TEST_CLASSES[math.random(#TMM_TEST_CLASSES)]
+            btn._testRole = TMM_TEST_ROLES[math.random(#TMM_TEST_ROLES)]
+        else
+            btn._testClass = nil
+            btn._testRole = nil
+        end
         TMM_ConfigureClickAction(btn, unit)
         btn:Show()
         TauntMasterMini_Button_OnShow(btn)
@@ -1992,6 +2040,32 @@ TMM_CreateOrInitUI = function()
                 TMM_RebuildRoster()
             end
         end)
+
+        -- Test mode toggle (same TMM_TestCount the /tm test command drives)
+        local TEST_STEPS = { 0, 5, 10, 20 }
+        local testBtn = CreateFrame('Button', nil, curPage, 'UIPanelButtonTemplate')
+        testBtn:SetPoint('TOPLEFT', 16, curPage._y)
+        testBtn:SetSize(320, 24)
+        local function testUpd()
+            testBtn:SetText('Test Bars: ' ..
+                (TMM_TestCount > 0 and tostring(TMM_TestCount) or 'Off'))
+        end
+        testUpd()
+        testBtn:SetScript('OnShow', testUpd)
+        testBtn:SetScript('OnClick', function()
+            if InCombatLockdown() then
+                print('|cFF00FFFFTauntMasterMini:|r cannot change test mode in combat.')
+                return
+            end
+            local idx = 1
+            for i, v in ipairs(TEST_STEPS) do
+                if v == TMM_TestCount then idx = i break end
+            end
+            TMM_TestCount = TEST_STEPS[(idx % #TEST_STEPS) + 1]
+            testUpd()
+            TMM_RebuildRoster()
+        end)
+        curPage._y = curPage._y - 30
 
         curPage = pageSpells
         f._leftSpellBtn = AddSpellDropdown('Left Click Spell', function()
