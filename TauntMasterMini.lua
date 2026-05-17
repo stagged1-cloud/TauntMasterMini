@@ -66,6 +66,7 @@ local DEFAULTS = {
     opacity = 1.0,
     sortMode = 'group',
     compactMode = false,
+    castFlash = true,
 }
 
 -- Forward declarations
@@ -1236,6 +1237,22 @@ local function TMM_CreateUnitButton(index)
     oorOverlay:Hide()
     btn._oorOverlay = oorOverlay
 
+    -- Cast-feedback flash: a brief white pulse on click so you can see the
+    -- click registered. Driven purely by an Alpha animation — no SetAttribute
+    -- and no secure mutation, so the PostClick trigger stays taint-free.
+    local castFlash = btn:CreateTexture(name .. '_CastFlash', 'ARTWORK', nil, 3)
+    castFlash:SetAllPoints(btn)
+    castFlash:SetColorTexture(1, 1, 1, 1)
+    castFlash:SetAlpha(0)
+    local cfAnim = castFlash:CreateAnimationGroup()
+    local cfA = cfAnim:CreateAnimation('Alpha')
+    cfA:SetFromAlpha(0.55)
+    cfA:SetToAlpha(0)
+    cfA:SetDuration(0.35)
+    cfAnim:SetScript('OnFinished', function() castFlash:SetAlpha(0) end)
+    btn._castFlash = castFlash
+    btn._castFlashAnim = cfAnim
+
     btn:SetScript('OnEvent', TauntMasterMini_Button_OnEvent)
     btn:SetScript('OnShow', TauntMasterMini_Button_OnShow)
     btn:SetScript('OnUpdate', TauntMasterMini_Button_OnUpdate)
@@ -1299,6 +1316,16 @@ local function TMM_CreateUnitButton(index)
     btn._clickOverlay = click
 
     return btn
+end
+
+-- Trigger the click-feedback flash. Only animates a texture's alpha — safe
+-- to call from PostClick (no secure attribute writes, cf. skull PostClick).
+local function TMM_PlayCastFlash(btn)
+    if not btn or not btn._castFlash or not btn._castFlashAnim then return end
+    if not TMM_Get('castFlash') then return end
+    btn._castFlashAnim:Stop()
+    btn._castFlash:SetAlpha(0.55)
+    btn._castFlashAnim:Play()
 end
 
 TMM_ConfigureClickAction = function(btn, unit)
@@ -1376,10 +1403,13 @@ TMM_ConfigureClickAction = function(btn, unit)
         end)
         click:SetScript('PostClick', function(_, which)
             print(string.format('TMM PostClick %s executed', which))
+            TMM_PlayCastFlash(btn)
         end)
     else
         click:SetScript('PreClick', nil)
-        click:SetScript('PostClick', nil)
+        click:SetScript('PostClick', function()
+            TMM_PlayCastFlash(btn)
+        end)
     end
 end
 
@@ -1698,7 +1728,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 980)
+        f:SetSize(360, 1020)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1969,6 +1999,12 @@ TMM_CreateOrInitUI = function()
             else
                 TMM_RebuildRoster()
             end
+        end)
+
+        AddCheck('Flash Bar on Click  (cast feedback)', function()
+            return TMM_Get('castFlash') ~= false
+        end, function(val)
+            TMM_Set('castFlash', val)
         end)
 
         AddCheck('Use Class Colours on Bars', function()
