@@ -21,6 +21,19 @@ end
 -- Globals used by XML / other files
 TMMButtons = TMMButtons or {}
 
+-- Test/config mode: number of dummy bars to show solo (0 = off).
+-- Session-only by design (resets on /reload); never written to SavedVariables.
+local TMM_TestCount = 0
+-- Cosmetic-only palette for test bars. NOT derived from any combat API,
+-- so this introduces no secret-value / taint exposure (protocol §0a).
+local TMM_TEST_COLORS = {
+    { 0, 0.8, 0 },      -- green
+    { 1, 1, 0 },        -- yellow
+    { 1, 0, 0 },        -- red
+    { 0, 0.6, 1 },      -- blue
+    { 1, 0.5, 0 },      -- orange
+}
+
 -- Find the button assigned to a given unit token (e.g. "party1", "raid3")
 local function TMM_FindButtonForUnit(unit)
     for _, btn in ipairs(TMMButtons) do
@@ -689,6 +702,25 @@ SlashCmdList['TAUNTMASTERMINI'] = function(msg)
         if #spells == 0 then
             print('  |cFFFF0000(none found - spellbook may not be loaded yet, try /tm spells again)|r')
         end
+    elseif msg:match('^test') then
+        if InCombatLockdown() then
+            print('|cFF00FFFFTauntMasterMini:|r cannot change test mode in combat.')
+            return
+        end
+        local n = tonumber(msg:match('^test%s*(%d+)'))
+        if n then
+            TMM_TestCount = math.max(0, math.min(40, n))
+        else
+            -- bare "/tm test" toggles a default of 5 dummy bars
+            TMM_TestCount = (TMM_TestCount > 0) and 0 or 5
+        end
+        if TMM_TestCount > 0 then
+            print('|cFF00FFFFTauntMasterMini:|r test mode ON (' .. TMM_TestCount ..
+                  ' bars). Tune layout, then |cFFFFFF00/tm test 0|r to exit.')
+        else
+            print('|cFF00FFFFTauntMasterMini:|r test mode OFF.')
+        end
+        TMM_RebuildRoster()
     else
         if TMMOptionsMenu then TMMOptionsMenu:Show() end
     end
@@ -824,6 +856,16 @@ end
 
 function TauntMasterMini_UpdateThreat(button)
     if not button.healthbar then return end
+
+    -- Test/config mode: paint a fixed cosmetic colour from our own palette and
+    -- skip the real threat path entirely. No combat API is read here.
+    if TMM_TestCount > 0 and button._testIndex then
+        local c = TMM_TEST_COLORS[((button._testIndex - 1) % #TMM_TEST_COLORS) + 1]
+        button.healthbar:SetStatusBarColor(c[1], c[2], c[3])
+        TMM_StopThreatFlash(button)
+        return
+    end
+
     local unit = button:GetAttribute('unit')
     if not unit or not UnitExists(unit) then
         button.healthbar:SetStatusBarColor(0, 0.8, 0)
@@ -1282,8 +1324,8 @@ TMM_RebuildRoster = function()
     if InCombatLockdown() then return end
     local parent = TauntMasterMini_Header or UIParent
 
-    -- Hide when not in party/raid if option is enabled
-    if TMM_Get('hideWhenSolo') and not IsInGroup() then
+    -- Hide when not in party/raid if option is enabled (test mode overrides it)
+    if TMM_TestCount == 0 and TMM_Get('hideWhenSolo') and not IsInGroup() then
         parent:Hide()
         return
     elseif not TauntMasterMiniDBChar.hideTM then
@@ -1294,7 +1336,11 @@ TMM_RebuildRoster = function()
     local num = GetNumGroupMembers()
     local hideSelf = not TMM_Get('showSelf')
     local filterDps = TMM_Get('hideDpsInRaid') and IsInRaid()
-    if IsInRaid() and num > 0 then
+    if TMM_TestCount > 0 then
+        -- Test/config mode: N dummy bars, all bound to 'player' so every
+        -- secure macro and WoW API call stays valid and taint-free.
+        for _ = 1, TMM_TestCount do table.insert(units, 'player') end
+    elseif IsInRaid() and num > 0 then
         for i = 1, num do
             local raidUnit = 'raid' .. i
             if not (hideSelf and TMM_IsPlayer(raidUnit)) then
@@ -1339,6 +1385,7 @@ TMM_RebuildRoster = function()
 
     for i = needed + 1, #TMMButtons do
         if TMMButtons[i] then
+            TMMButtons[i]._testIndex = nil
             TMMButtons[i]:Hide()
             if TMMButtons[i]._classIcon then TMMButtons[i]._classIcon:Hide() end
             if TMMButtons[i]._roleIcon then TMMButtons[i]._roleIcon:Hide() end
@@ -1365,9 +1412,16 @@ TMM_RebuildRoster = function()
         colY[col] = yOff + bh + 4
         if colY[col] > totalH then totalH = colY[col] end
         btn:SetAttribute('unit', unit)
+        btn._testIndex = (TMM_TestCount > 0) and i or nil
         TMM_ConfigureClickAction(btn, unit)
         btn:Show()
         TauntMasterMini_Button_OnShow(btn)
+        -- Test mode: label bars Test 1..N (OnShow set the real player name)
+        if TMM_TestCount > 0 and btn.name then
+            btn.name:Show()
+            btn.name:SetText('Test ' .. i)
+            btn.name:SetTextColor(1, 1, 1)
+        end
     end
 
     local cols = math.min(maxCols, math.max(1, math.ceil(needed / perCol)))
