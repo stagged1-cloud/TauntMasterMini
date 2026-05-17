@@ -60,6 +60,7 @@ local DEFAULTS = {
     showNames = true,
     showSelf = true,
     pullAlertEnabled = true,
+    pullAlertSound = true,
     pullAlertPartyChat = true,
     firstPullNotification = true,
     scale = 1.0,
@@ -1636,6 +1637,11 @@ local function TMM_ShowPullFlash(name, customMsg)
     TMMPullFlash:Show()
     TMMPullFlash._ag:Stop()
     TMMPullFlash._ag:Play()
+    -- Optional audio cue. Single chokepoint for both first-pull and normal
+    -- alerts. Master sound channel so it is audible even with SFX low.
+    if TMM_Get('pullAlertSound') ~= false then
+        PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959, 'Master')
+    end
     C_Timer.After(3, function()
         if TMMPullFlash and TMMPullFlash:IsShown() then
             TMMPullFlash._ag:Stop()
@@ -1728,7 +1734,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 1020)
+        f:SetSize(360, 1050)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -2086,6 +2092,12 @@ TMM_CreateOrInitUI = function()
             return TMM_Get('pullAlertPartyChat') ~= false
         end, function(val)
             TMM_Set('pullAlertPartyChat', val)
+        end)
+
+        AddCheck('Play sound on pull alert', function()
+            return TMM_Get('pullAlertSound') ~= false
+        end, function(val)
+            TMM_Set('pullAlertSound', val)
         end)
 
         -- Reset Defaults button
