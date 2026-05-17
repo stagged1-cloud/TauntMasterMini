@@ -88,6 +88,7 @@ local DEFAULTS = {
     interruptSpell = '',
     showInterruptBtn = true,
     interruptSize = 20,
+    showMarkerBar = false,
 }
 
 -- Forward declarations
@@ -1743,6 +1744,19 @@ local function TMM_GetChatChannel()
     return nil
 end
 
+-- Local, NON-protected on-screen "raid warning" banner. Replaces the old
+-- automated SendChatMessage, which is a PROTECTED call when fired from a
+-- tainted combat event handler (ADDON_ACTION_BLOCKED) and is exactly the
+-- automated-combat-comms pattern Midnight's addon disarmament forbids.
+local function TMM_RaidWarn(msg)
+    if RaidNotice_AddMessage and RaidWarningFrame then
+        RaidNotice_AddMessage(RaidWarningFrame, msg,
+            (ChatTypeInfo and ChatTypeInfo['RAID_WARNING']) or { r = 1, g = 0.3, b = 0.1 })
+    else
+        print('|cFFFF4400TauntMasterMini:|r ' .. msg)
+    end
+end
+
 local function TMM_HandlePullEvent(unit)
     if not TMM_Get('pullAlertEnabled') then return end
     if not unit or not UnitExists(unit) then return end
@@ -1788,10 +1802,7 @@ local function TMM_HandlePullEvent(unit)
             TMM_ShowPullFlash(name, flashMsg)
             print(string.format('|cFFFF8800TauntMasterMini:|r 1st Pull by |cFFFFFFFF%s|r!', name))
             if TMM_Get('pullAlertPartyChat') then
-                local channel = TMM_GetChatChannel()
-                if channel then
-                    SendChatMessage('1st Pull by ' .. name .. '!', channel)
-                end
+                TMM_RaidWarn('1st Pull by ' .. name .. '!')
             end
             return
         end
@@ -1802,10 +1813,7 @@ local function TMM_HandlePullEvent(unit)
     print(string.format('|cFFFF4400TauntMasterMini:|r |cFFFFFFFF%s|r pulled aggro!', name))
 
     if TMM_Get('pullAlertPartyChat') then
-        local channel = TMM_GetChatChannel()
-        if channel then
-            SendChatMessage(name .. ' pulled aggro!', channel)
-        end
+        TMM_RaidWarn(name .. ' pulled aggro!')
     end
 end
 
@@ -1816,7 +1824,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(380, 560)
+        f:SetSize(380, 620)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1849,7 +1857,7 @@ TMM_CreateOrInitUI = function()
         -- Tab system: fixed-size window, one page visible at a time, so the
         -- panel always fits on screen (replaces the old scroll-less tall list).
         local PAGE_X, PAGE_Y = 10, -66
-        local PAGE_W, PAGE_H = 360, 430
+        local PAGE_W, PAGE_H = 360, 500
 
         local curPage  -- helpers below add controls to whichever page is current
 
@@ -2195,6 +2203,15 @@ TMM_CreateOrInitUI = function()
             end
         end)
 
+        AddCheck('Show Raid Marker Bar  (8 markers below the frame)', function()
+            return TMM_Get('showMarkerBar') == true
+        end, function(val)
+            TMM_Set('showMarkerBar', val and true or false)
+            if TauntMasterMini_Header and TauntMasterMini_Header._updateMarkerBar then
+                TauntMasterMini_Header._updateMarkerBar()
+            end
+        end)
+
         AddCheck('Use Class Colours on Bars', function()
             return TMM_Get('useClassColours')
         end, function(val)
@@ -2279,7 +2296,7 @@ TMM_CreateOrInitUI = function()
             TMM_Set('firstPullNotification', val)
         end)
 
-        AddCheck('Announce pull in party/instance chat  (/p or /i)', function()
+        AddCheck('Announce pull on-screen  (big raid-warning banner)', function()
             return TMM_Get('pullAlertPartyChat') ~= false
         end, function(val)
             TMM_Set('pullAlertPartyChat', val)
@@ -2649,6 +2666,54 @@ TMM_CreateOrInitUI = function()
         header._interruptBtn = intBtn
         header._intTracker = intTracker
 
+        -- Multi-marker bar: 8 secure buttons (/targetmarker N). Static
+        -- macrotext set once from clean code; /targetmarker N self-toggles
+        -- so NO wrapper/PreClick is needed (the safest secure pattern).
+        -- Parented to UIParent like the skull to avoid threat-handler taint
+        -- propagation. Opt-in; default off. [Paranoid]
+        local MARKER_SZ = 18
+        local markerBtns = {}
+        for n = 1, 8 do
+            local mb = CreateFrame('Button', 'TMMMarker' .. n, UIParent,
+                'SecureActionButtonTemplate')
+            mb:SetSize(MARKER_SZ, MARKER_SZ)
+            if n == 1 then
+                mb:SetPoint('TOPLEFT', header, 'BOTTOMLEFT', 0, -2)
+            else
+                mb:SetPoint('LEFT', markerBtns[n - 1], 'RIGHT', 2, 0)
+            end
+            mb:SetFrameStrata(header:GetFrameStrata())
+            mb:SetFrameLevel(header:GetFrameLevel() + 6)
+            mb:SetAttribute('type', 'macro')
+            mb:SetAttribute('macrotext', '/targetmarker ' .. n)
+            mb:RegisterForClicks('AnyUp')
+            hooksecurefunc(mb, 'SetNormalTexture', function(self)
+                local nt = self:GetNormalTexture(); if nt then nt:SetAlpha(0) end
+            end)
+            do local nt = mb:GetNormalTexture(); if nt then nt:SetAlpha(0) end end
+            local ic = mb:CreateTexture(nil, 'ARTWORK')
+            ic:SetAllPoints()
+            ic:SetTexture('Interface/TargetingFrame/UI-RaidTargetingIcon_' .. n)
+            local hl = mb:CreateTexture(nil, 'HIGHLIGHT')
+            hl:SetAllPoints()
+            hl:SetColorTexture(1, 1, 1, 0.25)
+            markerBtns[n] = mb
+        end
+        header._markerBtns = markerBtns
+
+        local function TMM_UpdateMarkerBar()
+            local on = (TMM_Get('showMarkerBar') == true) and header:IsShown()
+            for _, mb in ipairs(markerBtns) do
+                if on then mb:Show() else mb:Hide() end
+            end
+        end
+        header._updateMarkerBar = TMM_UpdateMarkerBar
+        hooksecurefunc(header, 'Show', function() TMM_UpdateMarkerBar() end)
+        hooksecurefunc(header, 'Hide', function()
+            for _, mb in ipairs(markerBtns) do mb:Hide() end
+        end)
+        TMM_UpdateMarkerBar()
+
         header:SetScript('OnEvent', function(self, event, ...)
             if event == 'ADDON_LOADED' and ... == addonName then
                 -- SavedVariables are now restored — this is the FIRST safe
@@ -2660,6 +2725,7 @@ TMM_CreateOrInitUI = function()
                 TMM_ApplyFrameStyle()
                 if self._updateTauntCDVisible then self._updateTauntCDVisible() end
                 if self._updateInterruptVisible then self._updateInterruptVisible() end
+                if self._updateMarkerBar then self._updateMarkerBar() end
 
                 -- Restore saved position
                 TMM_RestoreHeaderPosition()
