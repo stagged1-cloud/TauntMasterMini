@@ -89,6 +89,7 @@ local DEFAULTS = {
     showInterruptBtn = true,
     interruptSize = 20,
     showMarkerBar = false,
+    showTauntButtons = false,
 }
 
 -- Forward declarations
@@ -1613,6 +1614,9 @@ TMM_RebuildRoster = function()
     if TauntMasterMini_Header and TauntMasterMini_Header._configureInterrupt then
         TauntMasterMini_Header._configureInterrupt()
     end
+    if TauntMasterMini_Header and TauntMasterMini_Header._configureTaunts then
+        TauntMasterMini_Header._configureTaunts()
+    end
 end
 
 TMM_DebugDump = function()
@@ -2212,6 +2216,15 @@ TMM_CreateOrInitUI = function()
             end
         end)
 
+        AddCheck('Show Target/Focus Taunt Buttons', function()
+            return TMM_Get('showTauntButtons') == true
+        end, function(val)
+            TMM_Set('showTauntButtons', val and true or false)
+            if TauntMasterMini_Header and TauntMasterMini_Header._updateTauntBtns then
+                TauntMasterMini_Header._updateTauntBtns()
+            end
+        end)
+
         AddCheck('Use Class Colours on Bars', function()
             return TMM_Get('useClassColours')
         end, function(val)
@@ -2666,6 +2679,74 @@ TMM_CreateOrInitUI = function()
         header._interruptBtn = intBtn
         header._intTracker = intTracker
 
+        -- Target-taunt / Focus-taunt secure buttons. Same static secure
+        -- pattern as the interrupt: macrotext set ONLY from clean,
+        -- combat-guarded code (header._configureTaunts via ADDON_LOADED /
+        -- TMM_RebuildRoster) — never a tainted PreClick. [Paranoid]
+        local function TMM_MakeTauntBtn(nm, anchorTo, label)
+            local b = CreateFrame('Button', nm, UIParent, 'SecureActionButtonTemplate')
+            b:SetSize(TMM_Get('interruptSize') or 20, TMM_Get('interruptSize') or 20)
+            b:SetPoint('LEFT', anchorTo, 'RIGHT', 4, 0)
+            b:SetFrameStrata(header:GetFrameStrata())
+            b:SetFrameLevel(header:GetFrameLevel() + 6)
+            b:SetAttribute('type', 'macro')
+            b:SetAttribute('macrotext', '')
+            b:RegisterForClicks('AnyUp')
+            hooksecurefunc(b, 'SetNormalTexture', function(self)
+                local t = self:GetNormalTexture(); if t then t:SetAlpha(0) end
+            end)
+            do local t = b:GetNormalTexture(); if t then t:SetAlpha(0) end end
+            local ic = b:CreateTexture(nil, 'ARTWORK')
+            ic:SetAllPoints(); ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            local hl = b:CreateTexture(nil, 'HIGHLIGHT')
+            hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.2)
+            b._iconTex = ic
+            b:SetScript('OnEnter', function(self)
+                GameTooltip:SetOwner(self, 'ANCHOR_TOP')
+                GameTooltip:SetText(label .. ' Taunt', 1, 1, 1)
+                local ts = TMM_GetTauntSpell()
+                GameTooltip:AddLine(ts and ('Casts ' .. ts .. ' on your ' ..
+                    string.lower(label) .. '.') or 'No taunt for this class.',
+                    0.8, 0.8, 0.8, true)
+                GameTooltip:Show()
+            end)
+            b:SetScript('OnLeave', GameTooltip_Hide)
+            return b
+        end
+        local tgtTauntBtn = TMM_MakeTauntBtn('TMMTargetTaunt', intBtn, 'Target')
+        local focusTauntBtn = TMM_MakeTauntBtn('TMMFocusTaunt', tgtTauntBtn, 'Focus')
+
+        local function TMM_UpdateTauntBtns()
+            local on = (TMM_Get('showTauntButtons') == true)
+                and (TMM_GetTauntSpell() ~= nil) and header:IsShown()
+            if on then tgtTauntBtn:Show(); focusTauntBtn:Show()
+            else tgtTauntBtn:Hide(); focusTauntBtn:Hide() end
+        end
+        header._updateTauntBtns = TMM_UpdateTauntBtns
+        hooksecurefunc(header, 'Show', function() TMM_UpdateTauntBtns() end)
+        hooksecurefunc(header, 'Hide', function()
+            tgtTauntBtn:Hide(); focusTauntBtn:Hide()
+        end)
+
+        header._configureTaunts = function()
+            local ts = TMM_GetTauntSpell()
+            local icon = ts and TMM_GetSpellIcon(ts)
+            tgtTauntBtn._iconTex:SetTexture(icon or 'Interface/Icons/INV_Misc_QuestionMark')
+            focusTauntBtn._iconTex:SetTexture(icon or 'Interface/Icons/INV_Misc_QuestionMark')
+            if InCombatLockdown() then return end
+            if ts then
+                tgtTauntBtn:SetAttribute('macrotext', '/cast [@target,harm,nodead] ' .. ts)
+                focusTauntBtn:SetAttribute('macrotext', '/cast [@focus,harm,nodead] ' .. ts)
+            else
+                tgtTauntBtn:SetAttribute('macrotext', '')
+                focusTauntBtn:SetAttribute('macrotext', '')
+            end
+            TMM_UpdateTauntBtns()
+        end
+        header._configureTaunts()
+        header._tgtTauntBtn = tgtTauntBtn
+        header._focusTauntBtn = focusTauntBtn
+
         -- Multi-marker bar: 8 secure buttons (/targetmarker N). Static
         -- macrotext set once from clean code; /targetmarker N self-toggles
         -- so NO wrapper/PreClick is needed (the safest secure pattern).
@@ -2726,6 +2807,7 @@ TMM_CreateOrInitUI = function()
                 if self._updateTauntCDVisible then self._updateTauntCDVisible() end
                 if self._updateInterruptVisible then self._updateInterruptVisible() end
                 if self._updateMarkerBar then self._updateMarkerBar() end
+                if self._updateTauntBtns then self._updateTauntBtns() end
 
                 -- Restore saved position
                 TMM_RestoreHeaderPosition()
