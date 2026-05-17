@@ -64,6 +64,7 @@ local DEFAULTS = {
     firstPullNotification = true,
     scale = 1.0,
     opacity = 1.0,
+    sortMode = 'group',
 }
 
 -- Forward declarations
@@ -160,6 +161,44 @@ local function TMM_ApplyFrameStyle()
     a = math.max(0.2, math.min(1.0, a))
     hdr:SetScale(s)
     hdr:SetAlpha(a)
+end
+
+-- Reorder the unit-token list in place per the saved sort mode.
+-- RebuildRoster only runs out of combat (it early-returns under
+-- InCombatLockdown), so UnitName/role here are NOT secret values. The
+-- type=='string' guard is a defensive §0a backstop: a secret value can
+-- never reach a < comparison even if a future code path calls this in
+-- a tainted context.
+local TMM_ROLE_RANK = { TANK = 1, HEALER = 2, DAMAGER = 3, NONE = 4 }
+local function TMM_SortUnits(units)
+    local mode = TMM_Get('sortMode') or 'group'
+    if mode == 'group' or #units < 2 then return end
+    local dec = {}
+    for i, tok in ipairs(units) do dec[i] = { tok = tok, idx = i } end
+    if mode == 'name' then
+        for _, e in ipairs(dec) do
+            local n = UnitName(e.tok)
+            e.key = (type(n) == 'string') and n:lower() or '\255'
+        end
+        table.sort(dec, function(a, b)
+            if a.key ~= b.key then return a.key < b.key end
+            return a.idx < b.idx
+        end)
+    else  -- 'tank' or 'role'
+        for _, e in ipairs(dec) do
+            local r = UnitGroupRolesAssigned(e.tok) or 'NONE'
+            if mode == 'tank' then
+                e.rank = (r == 'TANK') and 1 or 2
+            else
+                e.rank = TMM_ROLE_RANK[r] or 4
+            end
+        end
+        table.sort(dec, function(a, b)
+            if a.rank ~= b.rank then return a.rank < b.rank end
+            return a.idx < b.idx
+        end)
+    end
+    for i, e in ipairs(dec) do units[i] = e.tok end
 end
 
 local function TMM_GetLeftSpell()
@@ -1378,6 +1417,8 @@ TMM_RebuildRoster = function()
         if not hideSelf then table.insert(units, 'player') end
     end
 
+    TMM_SortUnits(units)
+
     local perCol = TMM_Get('unitsPerColumn') or 10
     local maxCols = TMM_Get('maxColumns') or 4
     local bw = TMM_Get('width') or 75
@@ -1644,7 +1685,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 900)
+        f:SetSize(360, 940)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1710,6 +1751,39 @@ TMM_CreateOrInitUI = function()
             end)
             y = y - 48
             return s
+        end
+
+        local SORT_ORDER = { 'group', 'tank', 'role', 'name' }
+        local SORT_LABEL = {
+            group = 'Group order', tank = 'Tanks first',
+            role = 'By role', name = 'By name',
+        }
+        local function AddCycle(label, get, set)
+            local b = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
+            b:SetPoint('TOPLEFT', 16, y)
+            b:SetSize(320, 24)
+            local function upd()
+                local v = get()
+                b:SetText(label .. ': ' .. (SORT_LABEL[v] or tostring(v)))
+            end
+            upd()
+            -- Panel is hidden until /tm; refresh on show so it always
+            -- reflects the loaded SavedVariables value.
+            b:SetScript('OnShow', upd)
+            b:SetScript('OnClick', function()
+                if InCombatLockdown() then
+                    print('TauntMasterMini: Cannot change this during combat.')
+                    return
+                end
+                local cur, idx = get(), 1
+                for i, v in ipairs(SORT_ORDER) do
+                    if v == cur then idx = i break end
+                end
+                set(SORT_ORDER[(idx % #SORT_ORDER) + 1])
+                upd()
+            end)
+            y = y - 30
+            return b
         end
 
         local function AddSpellDropdown(label, get, set)
@@ -1817,6 +1891,17 @@ TMM_CreateOrInitUI = function()
         end, function(v)
             TMM_Set('opacity', v / 100)
             TMM_ApplyFrameStyle()
+        end)
+
+        AddCycle('Sort', function()
+            return TMM_Get('sortMode') or 'group'
+        end, function(v)
+            TMM_Set('sortMode', v)
+            if InCombatLockdown() then
+                TauntMasterMini_Header._tmmPendingRebuild = 1
+            else
+                TMM_RebuildRoster()
+            end
         end)
 
         f._leftSpellBtn = AddSpellDropdown('Left Click Spell', function()
