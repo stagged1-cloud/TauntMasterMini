@@ -630,8 +630,13 @@ local function TMM_RestoreHeaderPosition()
     end
 end
 
+-- True only while the player is in Blizzard Edit Mode. Session-only; never
+-- written to SavedVariables so the user's real lock choice is preserved.
+local TMM_editModeActive = false
+
 TMM_UpdateLockState = function()
     local locked = TauntMasterMiniDBChar and TauntMasterMiniDBChar.locked
+    if TMM_editModeActive then locked = false end  -- movable while in Edit Mode
     TMM_SetHeaderDragEnabled(not locked)
 
     if TauntMasterMini_Header then
@@ -657,6 +662,22 @@ TMM_UpdateLockState = function()
     if not InCombatLockdown() and TauntMasterMini_Header and TauntMasterMini_Header:IsShown() then
         TMM_RebuildRoster()
     end
+end
+
+-- Blizzard Edit Mode integration (no library). Entering Edit Mode makes the
+-- frame movable like Blizzard's own frames; exiting restores the saved lock
+-- state and saves the (possibly moved) position. Guarded so older clients or
+-- a future API rename simply no-op instead of erroring.
+if EventRegistry and EventRegistry.RegisterCallback then
+    EventRegistry:RegisterCallback('EditMode.Enter', function()
+        TMM_editModeActive = true
+        TMM_UpdateLockState()
+    end)
+    EventRegistry:RegisterCallback('EditMode.Exit', function()
+        TMM_editModeActive = false
+        TMM_SaveHeaderPosition()
+        TMM_UpdateLockState()
+    end)
 end
 
 SlashCmdList['TAUNTMASTERMINI'] = function(msg)
