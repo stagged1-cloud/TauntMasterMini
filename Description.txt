@@ -7,9 +7,10 @@ OVERVIEW
 --------
 TauntMasterMini is a lightweight, all-in-one threat management addon designed
 for tank players.  It displays compact, color-coded party and raid frames with
-real-time threat tracking, one-click spell casting, cooldown overlays, pull
-alerts with first-pull detection, and a skull marker toggle — everything you
-need to manage threat in dungeons and raids within a single movable frame.
+real-time threat tracking, one-click spell casting, cooldown indicators, pull
+alerts with first-pull detection, an interrupt slot, and a raid-marker bar —
+everything you need to manage threat in dungeons and raids within a single
+movable frame.
 
 
 CORE FEATURES
@@ -59,20 +60,30 @@ Pull Alerts & First-Pull Detection
     non-tank to grab aggro triggers a distinct "1st Pull by [Name]!" alert
     with an orange-accented flash; subsequent pulls revert to normal alerts
   • Local chat message printed for every pull detected
-  • Optional party/instance/raid chat announce broadcasts the alert to your
-    group channel
+  • Optional large on-screen raid-warning banner (replaces the old
+    party/instance chat announce, which was removed because the protected
+    SendChatMessage call triggered ADDON_ACTION_BLOCKED in combat and is
+    disallowed under Midnight addon-disarmament)
+  • Optional sound cue on pull alert
   • Smart debounce: 5-second cooldown per unit prevents spam
   • First-pull state resets automatically when combat ends
-  • All three pull alert checkboxes enabled by default
+  • Pull alert checkboxes enabled by default
 
-Skull Marker Toggle
-  • Small skull icon above the tank bar header
-  • Click to place a skull raid marker on your current target; click again
-    to remove it
-  • Visual feedback: icon brightens when skull is active, dims when removed
-    or when you switch targets
-  • Uses Blizzard's SecureActionButtonTemplate with /targetmarker macro for
+Raid Marker Bar
+  • A row of all 8 raid markers below the frame (default on, toggleable
+    in Options → Display)
+  • Each button places its marker on your current target; press again to
+    remove it. Bright when applied, dim when not
+  • Uses Blizzard's SecureActionButtonTemplate with /targetmarker macros for
     taint-immune operation — works reliably even in tainted addon contexts
+  • Replaces the single skull button from earlier versions
+
+Interrupt & Taunt Buttons
+  • Optional secure Interrupt button casts your configured interrupt on your
+    current target; size-adjustable, with its own interrupt-only spell picker
+  • Optional secure Target-taunt and Focus-taunt buttons
+  • Macros are set only from clean, combat-guarded code (never from a tainted
+    click handler)
 
 Flexible Customization
   • Adjustable button dimensions (width: 50–200 px, height: 20–60 px)
@@ -111,6 +122,8 @@ SLASH COMMANDS
   /tm unlock                  Unlock frame position
   /tm spells                  Full spell diagnostic dump
   /tm debug                   Print button macros for each unit
+  /tm test [N]                Spawn N dummy bars solo (default 5, max 40);
+                              /tm test 0 exits (out of combat only)
 
 
 KEY FEATURES AT A GLANCE
@@ -125,10 +138,15 @@ KEY FEATURES AT A GLANCE
     and right-click spell cooldowns
   ✓ Out-of-range indicator — red tint overlay when the target is beyond
     spell range
-  ✓ Skull marker toggle — place or remove a skull on your target with one
-    click; taint-immune secure implementation
+  ✓ Raid-marker bar — all 8 markers below the frame, each a place/remove
+    toggle; taint-immune secure implementation
+  ✓ Interrupt slot + Target/Focus taunt — optional secure buttons with
+    their own size sliders and interrupt-only spell picker
   ✓ Pull alerts with first-pull detection — flashing banner, local message,
-    and optional group chat announce; distinct "1st Pull" notification
+    optional on-screen raid-warning banner and sound cue; distinct "1st
+    Pull" notification
+  ✓ Tabbed options, frame Scale/Opacity, bar Sort, Compact mode, Solo
+    target bar, and Blizzard Edit Mode integration
   ✓ Class-aware defaults — auto-selects the correct taunt for all six tank
     specs
   ✓ Role icons on every bar — Tank / Healer / DPS shown via LFG texture
@@ -158,4 +176,6 @@ REQUIREMENTS
 CREDITS
 -------
 Based on TauntMaster2 by Tartarusspawn (CurseForge).
-Modernized and rewritten by (Haruspex).
+Modernized and rewritten by Don Thompson (Haruspex).
+
+For Scouse.

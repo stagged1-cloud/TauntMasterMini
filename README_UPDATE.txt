@@ -1,12 +1,63 @@
 ================================================================================
                 TauntMasterMini - MIDNIGHT PRE-PATCH UPDATE
-                              Version 6.7.0
+                              Version 7.0.0
            Updated for WoW Midnight Pre-Expansion Patch 12.0.0
 ================================================================================
 
 
-WHAT'S NEW IN 6.7.0:
+WHAT'S NEW IN 7.0.0:
 ---------------------
+1. TABBED OPTIONS WINDOW
+   Options are now a fixed-size tabbed panel (Layout / Display / Spells /
+   Alerts) that always fits on screen, replacing the old single off-screen
+   list.
+
+2. TEST / CONFIG MODE
+   "/tm test [N]" (or the Layout tab) spawns N randomised dummy bars solo
+   (default 5, max 40) so you can lay out the frame without a group.
+   "/tm test 0" exits.  Cannot change in combat.
+
+3. LAYOUT & DISPLAY ADDITIONS
+   - Whole-frame Scale (50-150 %) and Opacity (20-100 %) sliders
+   - Bar Sort: Group order / Tanks first / By role / By name
+   - Compact Mode: bars collapse to threat-coloured icon-only squares
+   - Solo: optional live "target" threat/health bar when ungrouped
+   - Blizzard Edit Mode integration (frame movable in Edit Mode; restores
+     your saved lock state on exit)
+
+4. INTERRUPT SLOT + TARGET/FOCUS TAUNT
+   Optional secure Interrupt button casts your configured interrupt on your
+   target, with its own size slider and interrupt-only spell picker.
+   Optional secure Target-taunt and Focus-taunt buttons.  All macros are set
+   only from clean, combat-guarded code (never from a tainted click handler).
+
+5. RAID-MARKER BAR (REPLACES THE SINGLE SKULL BUTTON)
+   A row of all 8 raid markers below the frame, each a place/remove toggle
+   with bright/dim feedback.  The old standalone top-centre skull button is
+   gone; "Skull Marker Size" is now "Marker Button Size".
+
+6. DUAL SPELL COOLDOWN INDICATORS
+   Event-based cooldown icons for the left- and right-click spells flanking
+   the marker row.  No secret-value reads (uses UNIT_SPELLCAST_SUCCEEDED +
+   GetTime() + a known-duration table).
+
+7. CAST FLASH + PULL SOUND
+   Optional cast-feedback flash on bar click; optional sound cue on pull
+   alert.
+
+8. PULL-ALERT ADDON_ACTION_BLOCKED FIX
+   The optional pull announce called the protected SendChatMessage from a
+   tainted combat event handler, causing ADDON_ACTION_BLOCKED.  It has been
+   replaced with a local on-screen raid-warning banner.  This also aligns
+   with Midnight addon-disarmament (no protected combat chat from addon
+   Lua).
+
+NOTE: Interface version is unchanged (120000).  Keybindings were attempted
+but reverted (Bindings.xml would not register on the test client).
+
+
+WHAT WAS NEW IN 6.7.0:
+-----------------------
 1. ROLE ICONS ON EVERY BAR
    Tank / Healer / DPS role icons now appear on every player bar (not just
    tanks).  Uses the LFG role texture sheet with manual SetTexCoord for
@@ -56,19 +107,14 @@ WHAT WAS NEW IN 6.6.0:
 
 5. IMPROVED SKULL MARKER TOGGLE
    SecureHandlerWrapScript for clean, taint-free state switching.
+   (Superseded in 7.0.0 by the full raid-marker bar.)
 
 
 WHAT WAS NEW IN 6.5.0:
 -----------------------
 1. SKULL MARKER TOGGLE
-   A small skull icon now sits above the tank bar header.  Click it to place
-   a skull raid marker (marker 8) on your current target.  Click again to
-   remove it.
-
-   - Icon brightens when skull is placed, dims when removed or target changes
-   - Uses Blizzard's SecureActionButtonTemplate with /targetmarker macro —
-     completely immune to addon taint
-   - Tooltip on hover: "Toggle Skull Marker"
+   A small skull icon above the tank bar header to place/remove marker 8 on
+   your target.  (Superseded in 7.0.0 by the full 8-marker raid-marker bar.)
 
 2. FIRST-PULL DETECTION
    When the party is not yet in combat and a non-tank grabs aggro first,
@@ -77,27 +123,20 @@ WHAT WAS NEW IN 6.5.0:
      >> 1st PULL! <<
      [PlayerName]
 
-   Chat prints:  1st Pull by [Name]!
-   If party chat announce is enabled, it also sends "1st Pull by [Name]!"
-   to the group channel.
-
    After the first pull is recorded, subsequent pulls during the same combat
    revert to the standard ">> PULL! <<" alerts.  The first-pull tracker
    resets automatically when combat ends.
 
-3. NEW SETTING: FIRST-PULL NOTIFICATION
-   Options → Pull Alerts now has three checkboxes:
-   - "Alert when non-tank pulls" (flash + local chat)
-   - "Show '1st Pull by ...' when someone initiates combat"
-   - "Announce pull in party/instance chat"
-   All three are ENABLED BY DEFAULT for new installations.
+3. FIRST-PULL NOTIFICATION SETTING
+   Added the first-pull checkbox alongside the existing pull-alert toggles.
 
 
 WHAT WAS ADDED IN 6.4.0:
 --------------------------
 - Pull alert system: flashing red banner + local chat message
-- Optional party/instance chat announce
 - 5-second debounce per unit prevents alert spam
+  (The party/instance chat announce added here was removed in 7.0.0 — see
+   the ADDON_ACTION_BLOCKED fix above.)
 
 
 WHAT WAS ADDED IN 6.3.0:
@@ -114,7 +153,7 @@ WHAT WAS ADDED IN 6.1–6.2:
 ----------------------------
 - Full spellbook spell picker (tabs, flyouts, talents, action bars)
 - Blessing / friendly spell casting (@unit,help,nodead macros)
-- Dual cooldown overlays (left half = left-click spell, right half = right-click)
+- Dual cooldown overlays
 - Class-colored player names toggle
 - Drag handle and per-character frame position saving
 - Green square suppression (hooksecurefunc on SecureActionButtonTemplate)
@@ -122,22 +161,28 @@ WHAT WAS ADDED IN 6.1–6.2:
 - Frame lock/unlock state restored on login
 
 
-FULL FEATURE LIST:
-------------------
+FULL FEATURE LIST (7.0.0):
+--------------------------
 - Compact party/raid bars with real-time threat coloring
 - One-click casting: left-click and right-click configurable spells
 - Full spellbook spell picker with combat-relevance filtering
-- Dual cooldown sweep overlays (left/right halves)
+- Dual event-based spell cooldown indicators
 - Out-of-range red tint indicator
-- Show Self toggle: hide your own bar from the group list (session-only)
-- Skull marker toggle: place/remove skull on target with one click
-- Pull alerts: flashing box + local message + optional party/instance chat
+- Tabbed options (Layout / Display / Spells / Alerts)
+- Frame Scale & Opacity sliders
+- Bar Sort (group / tanks-first / role / name) and Compact icon-only mode
+- Test/config mode (/tm test [N]) for solo layout tuning
+- Show Self toggle (session-only); Solo target bar; Hide-when-solo;
+  Hide DPS in raid
+- Raid-marker bar: all 8 markers below the frame, place/remove toggles
+- Interrupt slot and Target/Focus taunt secure buttons (size sliders)
+- Pull alerts: flashing box + local message + optional on-screen
+  raid-warning banner + optional sound cue
 - First-pull detection: distinct "1st Pull by ..." notification
-- Class-colored player names
-- Role icons (Tank / Healer / DPS) on every bar
+- Class-colored player names; class & role icons (Tank/Healer/DPS) on every bar
 - Threat colors: green (none), yellow (high), orange (insecure), red (tanking)
 - Adjustable button width (50-200), height (20-60), columns (1-8), rows (1-20)
-- Movable frame with drag handle and lock/unlock
+- Movable frame with drag handle, lock/unlock, Blizzard Edit Mode integration
 - Per-character frame position saving
 - Minimap button (left-click = options, right-click = toggle frame)
 - Smart macro generation for hostile, helpful, and dual-target spells
@@ -163,44 +208,54 @@ SLASH COMMANDS:
 /tm unlock       Unlock frame position
 /tm spells       Full spell diagnostic dump
 /tm debug        Print button macros for each unit
+/tm test [N]     Spawn N dummy bars solo (default 5, max 40); /tm test 0
+                 exits (out of combat only)
 
 
 TESTING AFTER UPDATE:
 ---------------------
 1. Type /reload in-game
 
-2. Look for: "TauntMasterMini v6.7.0" in green text in chat
+2. Look for: "TauntMasterMini v7.0.0" in green text in chat
 
-3. Type /tm — verify options open; check the "Pull Alerts" section at the
-   bottom of the panel (three checkboxes, all ticked by default)
+3. Type /tm — verify the tabbed options window opens (Layout / Display /
+   Spells / Alerts) and fits on screen.  Check the Alerts tab toggles.
 
-4. Look for the small skull icon above the tank bar header:
+4. Layout tab → use the Test bars control (or /tm test 5) solo:
+   - Dummy bars appear with randomised class/role
+   - Tune width/height/columns/scale/opacity/sort, then /tm test 0
+
+5. Display tab → enable the Raid Marker Bar:
    - Target an enemy
-   - Click the skull icon — a skull marker should appear over the mob
-   - The skull icon should brighten
-   - Click again — skull removed, icon dims
-   - Switch targets — icon resets to dim
+   - Click a marker button — the marker should appear over the mob and the
+     button should brighten; click again to remove (button dims)
+   - Optionally enable the Interrupt and Target/Focus taunt buttons
 
-5. Join a party:
-   - Bars should appear with class-colored names
-   - Left-click a bar → should taunt their target (or cast your configured spell)
-   - Right-click → should cast secondary spell
-   - Bars of out-of-range targets should show red tint
-   - Cooldown sweeps should appear after casting
+6. Join a party:
+   - Bars appear with class-colored names and role icons
+   - Left-click a bar → casts your primary spell on their target
+   - Right-click → secondary spell
+   - Out-of-range targets show a red tint
+   - Cooldown indicators update after you cast
 
-6. Test pull alerts:
+7. Test pull alerts:
    - Have a DPS group member attack before you establish aggro
-   - First pull: should see ">> 1st PULL! << [Name]" flash
-   - Subsequent pulls: should see ">> PULL! << [Name]" flash
-   - Combat ends → first-pull tracker resets for next encounter
+   - First pull: ">> 1st PULL! << [Name]" flash
+   - Subsequent pulls: ">> PULL! << [Name]" flash
+   - With "Announce pull on-screen" on, a large raid-warning banner shows
+   - Combat ends → first-pull tracker resets
 
-7. /tm spells — verify no Fishing, Cooking, or other junk in the list
+8. /tm spells — verify no Fishing, Cooking, or other junk in the list
+
+9. (Paranoid) /console taintLog 2, reproduce, then check Logs/taint.log —
+   expect no new TauntMasterMini taint entries.
 
 
 TROUBLESHOOTING:
 ----------------
 No bars?
-  → Must be in a party or raid.  Solo shows only your bar.
+  → Must be in a party or raid.  Solo shows only your bar (or the Solo
+    target bar if enabled).
 
 Dropdown empty?
   → Type /tm spells for diagnostic.  Reopen picker after a moment.
@@ -208,8 +263,18 @@ Dropdown empty?
 Wrong spell fires?
   → Fixed in 6.3.0.  If it persists, close options, /reload, reopen.
 
-Skull marker not working?
-  → Must have a target selected.  Uses /targetmarker securely.
+Raid marker not applying?
+  → Must have a target selected.  Each marker button toggles its marker
+    via /targetmarker securely.
+
+Interrupt / taunt button does nothing?
+  → Macro is set out of combat only.  Leave combat and /reload.  Set the
+    interrupt spell in Options → Spells.
+
+Pull alert not announcing in chat?
+  → By design in 7.0.0 — automated combat chat was removed (it triggered
+    ADDON_ACTION_BLOCKED).  Enable "Announce pull on-screen" for the
+    raid-warning banner instead.
 
 Pull alert not firing?
   → Alert is based on threat healthbar color — the non-tank must have

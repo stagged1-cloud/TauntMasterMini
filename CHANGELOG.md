@@ -26,6 +26,8 @@ All notable changes to TauntMasterMini will be documented in this file.
 
 ### Fixed
 - **Pull-alert `ADDON_ACTION_BLOCKED`** — the optional pull announce called the protected `SendChatMessage` from a tainted combat event handler; replaced with a local on-screen raid-warning banner (also aligns with Midnight addon-disarmament)
+- **Raid-marker bar now behaves as a radio group** — applying a marker while another was still highlighted left both buttons lit even though a unit can only carry one marker. The OnClick restricted snippet now clears every sibling's secure state + macrotext (untainted, combat-legal) and PostClick resyncs the whole bar's brightness, so only the active marker stays highlighted
+- **`SetFrameRef` nil-call on load** — the radio-group sibling refs needed `SetFrameRef`, which plain `SecureActionButtonTemplate` does not provide; marker buttons now also mix in `SecureHandlerBaseTemplate` so the method exists
 
 ### Notes
 - Keybindings were attempted but reverted — `Bindings.xml` would not register on the test client

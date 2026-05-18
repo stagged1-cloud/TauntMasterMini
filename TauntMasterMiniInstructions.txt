@@ -1,5 +1,5 @@
 ================================================================================
-              TauntMasterMini v6.7.0 - Instructions & Reference
+              TauntMasterMini v7.0.0 - Instructions & Reference
               Updated for WoW Midnight Pre-Patch 12.0.0
 ================================================================================
 
@@ -25,9 +25,11 @@ compact frame with one bar per party or raid member.  Each bar shows:
   - Cooldown sweeps for your left-click and right-click spells
   - Red tint when the spell target is out of range
 
-Above the bar header is a small skull icon.  Click it to place (or remove)
-a skull raid marker on your current target.  The icon lights up when a skull
-is active and dims when removed or when you switch targets.
+Below the frame is a raid-marker bar with all 8 markers.  Click a marker to
+place it on your current target; click again to remove it.  A marker button
+is bright when applied and dim when not.  (Toggle the bar in Options >
+Display.)  An optional secure Interrupt button and Target/Focus taunt
+buttons can also be enabled.
 
 Click a bar to cast your configured spell:
   Left-click  = primary spell (default: your class taunt)
@@ -50,28 +52,55 @@ Friendly spells (blessings, heals) are cast directly on the group member.
   /tm spells             Full spell diagnostic (API checks, spellbook dump,
                          flyouts, talents, final filtered list)
   /tm debug              Print each button's unit and macro text
+  /tm test [N]           Spawn N randomised dummy bars solo for layout
+                         tuning (default 5, max 40); /tm test 0 exits
+                         (out of combat only)
 
 
 #####  Options Menu  #####
 
-Open with /tm or left-click the minimap icon:
+Open with /tm or left-click the minimap icon.  Fixed-size tabbed window:
+Layout / Display / Spells / Alerts.
 
+  --- Layout ---
   Button Width ......... Horizontal bar size (50-200 px)
   Button Height ........ Vertical bar size (20-60 px)
   Units Per Column ..... Bars per column before wrapping (1-20)
   Max Columns .......... Maximum number of columns (1-8)
+  Frame Scale (%) ...... Whole-frame scale (50-150 %)
+  Frame Opacity (%) .... Whole-frame opacity (20-100 %)
+  Sort ................. Group order / Tanks first / By role / By name
+  Test bars ............ Spawn dummy bars solo (also /tm test [N])
+
+  --- Display ---
+  Show Minimap Icon .... Toggle the minimap button
+  Show Names on Bars ... Toggle class-colored names on bars
+  Compact Mode ......... Icon-only threat-coloured squares (no names)
+  Flash Bar on Click ... Cast-feedback flash on bar click
+  Show Spell Cooldown Indicators ... Dual cooldown icons (left & right spell)
+  Show Interrupt Button ............ Secure interrupt button (spell in Spells)
+  Show Raid Marker Bar ............. All 8 markers below the frame
+  Show Target/Focus Taunt Buttons .. Secure target/focus taunt buttons
+  Use Class Colours on Bars ........ Tint bars with the unit's class colour
+  Show Self ............ Hide your own button (session-only, resets on reload)
+  Hide When Not In Party  Hide the whole frame when solo
+  Solo: show Target bar . When ungrouped, show a target threat/health bar
+  Hide DPS In Raid ..... In raids, show only tanks and healers
+  Lock Frame ........... Lock/unlock position (green border = unlocked)
+  Marker Button Size ... Size of raid-marker buttons (12-40 px)
+  Interrupt Button Size  Size of interrupt/taunt buttons (12-40 px)
+
+  --- Spells ---
   Left Click Spell ..... Choose from your full spellbook
   Right Click Spell .... Choose from your full spellbook
-  Show Minimap Icon .... Toggle the minimap button
-  Show Cooldowns ....... Toggle cooldown sweep overlays
-  Show Player Names .... Toggle class-colored names on bars
-  Show Self ............ Hide your own button (session-only, resets on reload)
-  Lock Frame ........... Lock/unlock position (green border = unlocked)
+  Interrupt Spell ...... Interrupt-only spell picker
 
-  --- Pull Alerts ---
-  Alert when non-tank pulls ......... Flash + local message (on by default)
-  Show "1st Pull by ..." ............ Distinct first-pull notification (on by default)
-  Announce in party/instance chat ... Broadcast pull to group chat (on by default)
+  --- Alerts ---
+  Alert when non-tank pulls ..... Flash + local message (on by default)
+  Show "1st Pull by ..." ........ Distinct first-pull notification (on by default)
+  Announce pull on-screen ....... Large raid-warning banner (replaces the
+                                  old combat-tainted chat announce)
+  Play sound on pull alert ...... Sound cue when a pull alert fires
 
 
 #####  Spell Picker  #####
@@ -109,11 +138,11 @@ Icons:
   Class icon (left side)   = the player's class icon
   Role icon (right side)   = Tank / Healer / DPS, from LFG role or spec
 
-Skull marker toggle:
-  Small skull icon above the bar header.
-  Click = place skull on current target (icon brightens).
-  Click again = remove skull (icon dims).
-  Switches target = icon resets to dim.
+Raid marker bar:
+  Row of all 8 raid markers below the frame.
+  Click a marker = apply it to your current target (button brightens).
+  Click again = remove it (button dims).
+  Each marker button toggles independently.
 
 
 #####  Pull Alerts  #####
@@ -121,7 +150,11 @@ Skull marker toggle:
 When a non-tank party member grabs aggro:
   - A red flashing box appears:  >> PULL! <<  [Name]
   - Local chat prints:  TauntMasterMini: [Name] pulled aggro!
-  - Optional: broadcasts to party / instance / raid chat
+  - Optional: a large on-screen raid-warning banner
+  - Optional: a sound cue
+  (The old party/instance chat announce was removed — the protected
+   SendChatMessage call triggered ADDON_ACTION_BLOCKED in combat and is
+   disallowed under Midnight addon-disarmament.)
 
 First-pull detection:
   If no one has pulled yet this combat, the first non-tank to grab aggro
@@ -160,8 +193,9 @@ damage, or defensives.
   Wrong spell fires after reload?
     → Fixed in 6.3.0.  If it persists, /reload once more.
 
-  Skull marker not working?
-    → Must have a target selected.  Uses /targetmarker securely.
+  Raid marker not applying?
+    → Must have a target selected.  Each marker button toggles its
+      marker via /targetmarker securely.
 
   Pull alert not firing?
     → Alert is based on threat healthbar color.  Ensure the non-tank

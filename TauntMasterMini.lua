@@ -1,7 +1,7 @@
 -- TauntMasterMini - Modernized version
 -- Author: Don Thompson (Haruspex) - 2025-2026
 -- Updated for WoW Midnight Pre-Expansion Patch 12.0.0 (Build 65512) - January 2026
--- v6.7.0 - April 2026
+-- v7.0.0 - May 2026
 -- A threat management addon for tanks. For Scouse.
 
 local addonName = ...
@@ -2741,8 +2741,12 @@ TMM_CreateOrInitUI = function()
             end
         end
         for n = 1, 8 do
+            -- SecureHandlerBaseTemplate is mixed in so the button gains
+            -- SetFrameRef/GetFrameRef (plain SecureActionButtonTemplate does
+            -- NOT provide them) — required for the sibling-clear refs below.
+            -- Do not drop it. [Paranoid]
             local mb = CreateFrame('Button', 'TMMMarker' .. n, UIParent,
-                'SecureActionButtonTemplate')
+                'SecureActionButtonTemplate, SecureHandlerBaseTemplate')
             mb:SetSize(MARKER_SZ, MARKER_SZ)
             if n == 1 then
                 mb:SetPoint('TOPLEFT', header, 'BOTTOMLEFT', 0, -2)
@@ -2759,9 +2763,22 @@ TMM_CreateOrInitUI = function()
             mb:SetAttribute('macrotext', '/targetmarker ' .. n)
             mb:SetAttribute('mk-state', 'off')
             mb:RegisterForClicks('AnyUp')
+            -- A unit can only carry ONE raid marker, so the bar is a radio
+            -- group: turning a marker ON must also turn every OTHER marker
+            -- OFF (state + macrotext) so the GUI matches reality. This sibling
+            -- reset is done HERE, inside the untainted restricted environment
+            -- (legal even in combat) — never from tainted Lua. Sibling
+            -- handles come from frame refs set once at load. [Paranoid]
             SecureHandlerWrapScript(mb, 'OnClick', markerWrapper, [[
                 local st = self:GetAttribute('mk-state') or 'off'
                 if st == 'off' then
+                    for i = 1, 8 do
+                        local sib = self:GetFrameRef('mk' .. i)
+                        if sib and sib ~= self then
+                            sib:SetAttribute('mk-state', 'off')
+                            sib:SetAttribute('macrotext', sib:GetAttribute('mk-on'))
+                        end
+                    end
                     self:SetAttribute('macrotext', self:GetAttribute('mk-on'))
                     self:SetAttribute('mk-state', 'on')
                 else
@@ -2781,14 +2798,30 @@ TMM_CreateOrInitUI = function()
             hl:SetColorTexture(1, 1, 1, 0.25)
             mb._icon = ic
             TMM_SetMarkerBright(mb, false)  -- start dim/inactive
-            -- PostClick is tainted but only READS the secure state attribute
-            -- (no SetAttribute / secure mutation) — exactly the old skull.
-            mb:HookScript('PostClick', function(self)
-                TMM_SetMarkerBright(self, self:GetAttribute('mk-state') == 'on')
+            -- PostClick is tainted but only READS secure state attributes and
+            -- updates visuals (no SetAttribute / secure mutation). Resync the
+            -- WHOLE bar so the sibling-clear above is reflected: only the
+            -- active marker stays bright, every other one dims.
+            mb:HookScript('PostClick', function()
+                for _, sib in ipairs(markerBtns) do
+                    TMM_SetMarkerBright(sib, sib:GetAttribute('mk-state') == 'on')
+                end
             end)
             markerBtns[n] = mb
         end
         header._markerBtns = markerBtns
+
+        -- Give every marker a secure frame ref to all 8 buttons so the
+        -- OnClick restricted snippet can clear its siblings via
+        -- self:GetFrameRef. SetFrameRef exists only because the buttons mix
+        -- in SecureHandlerBaseTemplate (see CreateFrame above). Set once at
+        -- load from clean code (out of combat) — refs are setup, not a
+        -- per-click secure mutation. [Paranoid]
+        for a = 1, 8 do
+            for i = 1, 8 do
+                markerBtns[a]:SetFrameRef('mk' .. i, markerBtns[i])
+            end
+        end
 
         -- On target change, dim every marker icon (visual only — we do NOT
         -- SetAttribute 'mk-state' from tainted Lua; same minor state desync
@@ -2958,7 +2991,7 @@ end
 
 TMM_CreateOrInitUI()
 DebugPrint('TauntMasterMini.lua file loaded')
-print('|cFF00FF00TauntMasterMini v6.7.0|r by |cFFFFFFFF(Haruspex)|r.. Type |cFFFFFF00/tm|r for options.')
+print('|cFF00FF00TauntMasterMini v7.0.0|r by |cFFFFFFFFDon Thompson (Haruspex)|r. Type |cFFFFFF00/tm|r for options.')
 
 
 

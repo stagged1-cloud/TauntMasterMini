@@ -48,6 +48,7 @@ A lightweight threat utility for tanks that shows live threat bars, one-click sp
 | `/tm unlock` | Unlock frame position |
 | `/tm spells` | Run full spell diagnostic (API checks, spellbook tabs, flyouts, talents, final list) |
 | `/tm debug` | Print button macro text for each unit |
+| `/tm test [N]` | Spawn N (default 5, max 40) randomised dummy bars solo for layout tuning; `/tm test 0` exits (must be out of combat) |
 
 ---
 
@@ -64,7 +65,9 @@ A lightweight threat utility for tanks that shows live threat bars, one-click sp
 
 ## Configuration Options
 
-Access via `/tm` or left-click the minimap button:
+Access via `/tm` or left-click the minimap button. The window is a fixed-size tabbed panel: **Layout / Display / Spells / Alerts**.
+
+**Layout tab**
 
 | Option | Description |
 |---|---|
@@ -72,19 +75,42 @@ Access via `/tm` or left-click the minimap button:
 | **Button Height** | Vertical size of each player bar (20–60 px) |
 | **Units Per Column** | How many bars per column before wrapping (1–20) |
 | **Max Columns** | Maximum columns to display (1–8) |
-| **Left Click Spell** | Spell cast on left-click (picked from your spellbook) |
-| **Right Click Spell** | Spell cast on right-click (picked from your spellbook) |
+| **Frame Scale (%)** | Whole-frame scale (50–150 %) |
+| **Frame Opacity (%)** | Whole-frame opacity (20–100 %) |
+| **Sort** | Bar order: Group order / Tanks first / By role / By name |
+| **Test bars** | Spawn randomised dummy bars solo to tune layout (also `/tm test [N]`) |
+
+**Display tab**
+
+| Option | Description |
+|---|---|
 | **Show Minimap Icon** | Toggle the minimap button |
-| **Show Cooldowns** | Toggle cooldown sweep overlays on bars |
 | **Show Names on Bars** | Toggle class-colored name labels |
+| **Compact Mode** | Collapse bars to icon-only threat-coloured squares (no names) |
+| **Flash Bar on Click** | Cast-feedback flash when you click a bar |
+| **Show Spell Cooldown Indicators** | Dual cooldown icons flanking the marker row (left & right click spells) |
+| **Show Interrupt Button** | Show the secure interrupt button (spell set in Spells tab) |
+| **Show Raid Marker Bar** | Show all 8 raid markers below the frame (place/remove toggles) |
+| **Show Target/Focus Taunt Buttons** | Show the secure Target-taunt / Focus-taunt buttons |
 | **Use Class Colours on Bars** | Tint each bar with the unit's class colour |
 | **Show Self** | Toggle your own button in the group list (session-only, resets on reload) |
 | **Hide When Not In Party** | Hide the whole frame when you are solo |
+| **Solo: show Target bar** | When ungrouped, show a single live threat/health bar for your target |
 | **Hide DPS In Raid** | In raids, only show tanks and healers |
 | **Lock Frame** | Lock/unlock frame position (green border when unlocked) |
+| **Marker Button Size** | Size of the raid-marker buttons (12–40 px) |
+| **Interrupt Button Size** | Size of the interrupt / taunt buttons (12–40 px) |
+
+**Spells tab** — Left-click spell, Right-click spell, and Interrupt spell, each picked from a filtered scan of your full spellbook (tabs, flyouts, talents, action bars).
+
+**Alerts tab**
+
+| Option | Description |
+|---|---|
 | **Alert when non-tank pulls** | Flash box + local chat message when a DPS/healer grabs aggro |
 | **Show "1st Pull by ..."** | Distinct first-pull notification when someone initiates combat |
-| **Announce pull in party/instance chat** | Broadcasts the pull message to party, instance, or raid chat |
+| **Announce pull on-screen** | Large on-screen raid-warning banner on pull (replaces the old combat-tainted chat announce) |
+| **Play sound on pull alert** | Play a sound cue when a pull alert fires |
 
 ---
 
@@ -101,7 +127,9 @@ Access via `/tm` or left-click the minimap button:
 | Wrong spell after reload | Fixed in 6.3.0 — spells now refresh from SavedVariables on load |
 | Pull alert not firing | You must be targeting the mob the non-tank pulled; alert is based on threat healthbar color |
 | Pull alert spamming | 5-second debounce per unit is active; if still spamming, disable via Options |
-| Skull marker not working | Must have a target selected; if using GSE or any addon that sets `ActionButtonUseKeyDown` OFF, update to 6.5.1+ which handles both CVar states |
+| Raid marker not applying | Select a target first; each button in the marker bar toggles its marker (place/remove). The old single skull button was replaced by the full 8-marker bar in 7.0.0 |
+| Interrupt / taunt button does nothing | The macro is set out of combat only; leave combat and `/reload`. Set the interrupt spell in Options → Spells |
+| Pull alert not announcing in chat | By design in 7.0.0 — automated combat chat was removed (caused `ADDON_ACTION_BLOCKED`); the announce is now an on-screen raid-warning banner |
 
 Enable Lua error reporting for detailed diagnostics:
 ```
@@ -130,6 +158,15 @@ Modernized and rewritten by **Don Thompson (Haruspex)**
 ---
 
 ## Changelog
+
+### Version 7.0.0
+- Tabbed options window (Layout / Display / Spells / Alerts) — fixed-size, always fits on screen
+- Test/config mode (`/tm test [N]` or the Layout tab) to lay out the frame solo
+- Whole-frame Scale & Opacity sliders; bar Sort (group / tanks-first / role / name); Compact icon-only mode
+- Dual spell cooldown indicators, configurable Interrupt slot, and Target/Focus taunt secure buttons
+- Raid-marker bar (all 8 markers, place/remove toggles) replaces the old single skull button
+- Cast-feedback flash, pull-alert sound cue, Blizzard Edit Mode integration, and a Solo/world target bar
+- Fixed pull-alert `ADDON_ACTION_BLOCKED`: combat chat announce replaced with a local on-screen raid-warning banner (also aligns with Midnight addon-disarmament)
 
 ### Version 6.7.0
 - Added Tank/Healer/DPS role icons on every bar (not just tanks); falls back to DPS when role is unassigned and infers from spec
