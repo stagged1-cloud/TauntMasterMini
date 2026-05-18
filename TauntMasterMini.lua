@@ -21,6 +21,35 @@ end
 -- Globals used by XML / other files
 TMMButtons = TMMButtons or {}
 
+-- Test/config mode: number of dummy bars to show solo (0 = off).
+-- Session-only by design (resets on /reload); never written to SavedVariables.
+local TMM_TestCount = 0
+-- Cosmetic-only palette for test bars. NOT derived from any combat API,
+-- so this introduces no secret-value / taint exposure (protocol §0a).
+local TMM_TEST_COLORS = {
+    { 0, 0.8, 0 },      -- green
+    { 1, 1, 0 },        -- yellow
+    { 1, 0, 0 },        -- red
+    { 0, 0.6, 1 },      -- blue
+    { 1, 0.5, 0 },      -- orange
+}
+-- Pools for randomising test-mode bars (cosmetic only; no combat API).
+local TMM_TEST_CLASSES = {
+    'WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST', 'DEATHKNIGHT',
+    'SHAMAN', 'MAGE', 'WARLOCK', 'MONK', 'DRUID', 'DEMONHUNTER', 'EVOKER',
+}
+local TMM_TEST_ROLES = { 'TANK', 'HEALER', 'DAMAGER' }
+-- Known interrupt abilities across all classes/specs, for filtering the
+-- Interrupt Spell picker. Name-keyed (matches how spells are stored).
+local TMM_INTERRUPTS = {
+    ['Pummel'] = true, ['Mind Freeze'] = true, ['Skull Bash'] = true,
+    ['Kick'] = true, ['Rebuke'] = true, ['Counterspell'] = true,
+    ['Spell Lock'] = true, ['Wind Shear'] = true, ['Disrupt'] = true,
+    ["Avenger's Shield"] = true, ['Silence'] = true, ['Solar Beam'] = true,
+    ['Muzzle'] = true, ['Quell'] = true, ['Spear Hand Strike'] = true,
+    ['Counter Shot'] = true,
+}
+
 -- Find the button assigned to a given unit token (e.g. "party1", "raid3")
 local function TMM_FindButtonForUnit(unit)
     for _, btn in ipairs(TMMButtons) do
@@ -47,8 +76,21 @@ local DEFAULTS = {
     showNames = true,
     showSelf = true,
     pullAlertEnabled = true,
+    pullAlertSound = true,
     pullAlertPartyChat = true,
     firstPullNotification = true,
+    scale = 1.0,
+    opacity = 1.0,
+    sortMode = 'group',
+    compactMode = false,
+    castFlash = true,
+    tauntCDIndicator = true,
+    interruptSpell = '',
+    showInterruptBtn = true,
+    interruptSize = 20,
+    showMarkerBar = true,  -- replaces the removed top skull button
+    showTauntButtons = false,
+    soloShowTarget = false,
 }
 
 -- Forward declarations
@@ -133,12 +175,68 @@ local function TMM_Set(key, val)
     if TauntMasterMiniDBChar then TauntMasterMiniDBChar[key] = val end
 end
 
+-- Apply whole-frame scale + opacity to the header (children inherit both).
+-- SetScale/SetAlpha are NOT combat-protected, so this is safe in combat and
+-- needs no rebuild deferral. Clamped so the frame can never vanish entirely.
+local function TMM_ApplyFrameStyle()
+    local hdr = TauntMasterMini_Header
+    if not hdr then return end
+    local s = tonumber(TMM_Get('scale')) or 1.0
+    local a = tonumber(TMM_Get('opacity')) or 1.0
+    s = math.max(0.5, math.min(1.5, s))
+    a = math.max(0.2, math.min(1.0, a))
+    hdr:SetScale(s)
+    hdr:SetAlpha(a)
+end
+
+-- Reorder the unit-token list in place per the saved sort mode.
+-- RebuildRoster only runs out of combat (it early-returns under
+-- InCombatLockdown), so UnitName/role here are NOT secret values. The
+-- type=='string' guard is a defensive §0a backstop: a secret value can
+-- never reach a < comparison even if a future code path calls this in
+-- a tainted context.
+local TMM_ROLE_RANK = { TANK = 1, HEALER = 2, DAMAGER = 3, NONE = 4 }
+local function TMM_SortUnits(units)
+    local mode = TMM_Get('sortMode') or 'group'
+    if mode == 'group' or #units < 2 then return end
+    local dec = {}
+    for i, tok in ipairs(units) do dec[i] = { tok = tok, idx = i } end
+    if mode == 'name' then
+        for _, e in ipairs(dec) do
+            local n = UnitName(e.tok)
+            e.key = (type(n) == 'string') and n:lower() or '\255'
+        end
+        table.sort(dec, function(a, b)
+            if a.key ~= b.key then return a.key < b.key end
+            return a.idx < b.idx
+        end)
+    else  -- 'tank' or 'role'
+        for _, e in ipairs(dec) do
+            local r = UnitGroupRolesAssigned(e.tok) or 'NONE'
+            if mode == 'tank' then
+                e.rank = (r == 'TANK') and 1 or 2
+            else
+                e.rank = TMM_ROLE_RANK[r] or 4
+            end
+        end
+        table.sort(dec, function(a, b)
+            if a.rank ~= b.rank then return a.rank < b.rank end
+            return a.idx < b.idx
+        end)
+    end
+    for i, e in ipairs(dec) do units[i] = e.tok end
+end
+
 local function TMM_GetLeftSpell()
     return TMM_Get('leftClickSpell') or ''
 end
 
 local function TMM_GetRightSpell()
     return TMM_Get('rightClickSpell') or ''
+end
+
+local function TMM_GetInterruptSpell()
+    return TMM_Get('interruptSpell') or ''
 end
 
 local function TMM_MinimapSettings()
@@ -409,6 +507,16 @@ local function TMM_ShowSpellPicker(owner)
         return
     end
 
+    -- Optional per-dropdown filter (e.g. the Interrupt Spell picker only
+    -- lists known interrupt abilities).
+    if owner._spellFilter then
+        local filtered = {}
+        for _, s in ipairs(spells) do
+            if owner._spellFilter(s) then filtered[#filtered + 1] = s end
+        end
+        spells = filtered
+    end
+
     -- Use modern dropdown API
     MenuUtil.CreateContextMenu(UIParent, function(ownerRegion, rootDescription)
         rootDescription:SetScrollMode(GetScreenHeight() * 0.6)
@@ -523,8 +631,13 @@ local function TMM_RestoreHeaderPosition()
     end
 end
 
+-- True only while the player is in Blizzard Edit Mode. Session-only; never
+-- written to SavedVariables so the user's real lock choice is preserved.
+local TMM_editModeActive = false
+
 TMM_UpdateLockState = function()
     local locked = TauntMasterMiniDBChar and TauntMasterMiniDBChar.locked
+    if TMM_editModeActive then locked = false end  -- movable while in Edit Mode
     TMM_SetHeaderDragEnabled(not locked)
 
     if TauntMasterMini_Header then
@@ -550,6 +663,22 @@ TMM_UpdateLockState = function()
     if not InCombatLockdown() and TauntMasterMini_Header and TauntMasterMini_Header:IsShown() then
         TMM_RebuildRoster()
     end
+end
+
+-- Blizzard Edit Mode integration (no library). Entering Edit Mode makes the
+-- frame movable like Blizzard's own frames; exiting restores the saved lock
+-- state and saves the (possibly moved) position. Guarded so older clients or
+-- a future API rename simply no-op instead of erroring.
+if EventRegistry and EventRegistry.RegisterCallback then
+    EventRegistry:RegisterCallback('EditMode.Enter', function()
+        TMM_editModeActive = true
+        TMM_UpdateLockState()
+    end)
+    EventRegistry:RegisterCallback('EditMode.Exit', function()
+        TMM_editModeActive = false
+        TMM_SaveHeaderPosition()
+        TMM_UpdateLockState()
+    end)
 end
 
 SlashCmdList['TAUNTMASTERMINI'] = function(msg)
@@ -689,6 +818,25 @@ SlashCmdList['TAUNTMASTERMINI'] = function(msg)
         if #spells == 0 then
             print('  |cFFFF0000(none found - spellbook may not be loaded yet, try /tm spells again)|r')
         end
+    elseif msg:match('^test') then
+        if InCombatLockdown() then
+            print('|cFF00FFFFTauntMasterMini:|r cannot change test mode in combat.')
+            return
+        end
+        local n = tonumber(msg:match('^test%s*(%d+)'))
+        if n then
+            TMM_TestCount = math.max(0, math.min(40, n))
+        else
+            -- bare "/tm test" toggles a default of 5 dummy bars
+            TMM_TestCount = (TMM_TestCount > 0) and 0 or 5
+        end
+        if TMM_TestCount > 0 then
+            print('|cFF00FFFFTauntMasterMini:|r test mode ON (' .. TMM_TestCount ..
+                  ' bars). Tune layout, then |cFFFFFF00/tm test 0|r to exit.')
+        else
+            print('|cFF00FFFFTauntMasterMini:|r test mode OFF.')
+        end
+        TMM_RebuildRoster()
     else
         if TMMOptionsMenu then TMMOptionsMenu:Show() end
     end
@@ -762,7 +910,7 @@ function TauntMasterMini_Button_OnShow(self)
         if color and self._classBg then
             self._classBg:SetColorTexture(color.r * 0.3, color.g * 0.3, color.b * 0.3, 0.85)
         end
-        if self._classIcon and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class] then
+        if not TMM_Get('compactMode') and self._classIcon and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class] then
             self._classIcon:SetTexCoord(unpack(CLASS_ICON_TCOORDS[class]))
             self._classIcon:Show()
         end
@@ -777,7 +925,7 @@ function TauntMasterMini_Button_OnShow(self)
 
     -- Show or hide names on bars
     if self.name then
-        if TMM_Get('showNames') then
+        if TMM_Get('showNames') and not TMM_Get('compactMode') then
             self.name:Show()
             local name = UnitName(unit)
             if name then
@@ -824,6 +972,16 @@ end
 
 function TauntMasterMini_UpdateThreat(button)
     if not button.healthbar then return end
+
+    -- Test/config mode: paint a fixed cosmetic colour from our own palette and
+    -- skip the real threat path entirely. No combat API is read here.
+    if TMM_TestCount > 0 and button._testIndex then
+        local c = TMM_TEST_COLORS[((button._testIndex - 1) % #TMM_TEST_COLORS) + 1]
+        button.healthbar:SetStatusBarColor(c[1], c[2], c[3])
+        TMM_StopThreatFlash(button)
+        return
+    end
+
     local unit = button:GetAttribute('unit')
     if not unit or not UnitExists(unit) then
         button.healthbar:SetStatusBarColor(0, 0.8, 0)
@@ -918,6 +1076,44 @@ end
 function TauntMasterMini_UpdateIcons(button)
     local unit = button:GetAttribute('unit')
     if not unit or not UnitExists(unit) then return end
+
+    -- Compact mode: no class/role icons. Enforced every tick because
+    -- OnUpdate calls this ~10fps and would otherwise re-show the role icon.
+    if TMM_Get('compactMode') then
+        if button._classIcon then button._classIcon:Hide() end
+        if button._roleIcon then button._roleIcon:Hide() end
+        return
+    end
+
+    -- Test mode: render the randomised class/role rolled at rebuild,
+    -- independent of the real (player) unit, so bars look like a mixed group.
+    if TMM_TestCount > 0 and button._testIndex then
+        local tc = button._testClass
+        if button._classIcon and tc and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[tc] then
+            button._classIcon:SetTexture('Interface\\WorldStateFrame\\Icons-Classes')
+            button._classIcon:SetTexCoord(unpack(CLASS_ICON_TCOORDS[tc]))
+            button._classIcon:Show()
+        end
+        if button._classBg then
+            local col = tc and RAID_CLASS_COLORS[tc]
+            if col then
+                button._classBg:SetColorTexture(col.r * 0.3, col.g * 0.3, col.b * 0.3, 0.85)
+            end
+        end
+        if button._roleIcon and button._roleIconTex then
+            local r = button._testRole
+            button._roleIconTex:SetTexture('Interface\\LFGFrame\\UI-LFG-ICON-ROLES')
+            if r == 'TANK' then
+                button._roleIconTex:SetTexCoord(0, 0.265625, 0.265625, 0.53125)
+            elseif r == 'HEALER' then
+                button._roleIconTex:SetTexCoord(0.265625, 0.53125, 0, 0.265625)
+            else
+                button._roleIconTex:SetTexCoord(0.265625, 0.53125, 0.265625, 0.53125)
+            end
+            button._roleIcon:Show()
+        end
+        return
+    end
 
     -- Role icon: show Tank/Healer/DPS based on assigned group role
     if button._roleIcon and button._roleIconTex then
@@ -1130,6 +1326,22 @@ local function TMM_CreateUnitButton(index)
     oorOverlay:Hide()
     btn._oorOverlay = oorOverlay
 
+    -- Cast-feedback flash: a brief white pulse on click so you can see the
+    -- click registered. Driven purely by an Alpha animation — no SetAttribute
+    -- and no secure mutation, so the PostClick trigger stays taint-free.
+    local castFlash = btn:CreateTexture(name .. '_CastFlash', 'ARTWORK', nil, 3)
+    castFlash:SetAllPoints(btn)
+    castFlash:SetColorTexture(1, 1, 1, 1)
+    castFlash:SetAlpha(0)
+    local cfAnim = castFlash:CreateAnimationGroup()
+    local cfA = cfAnim:CreateAnimation('Alpha')
+    cfA:SetFromAlpha(0.55)
+    cfA:SetToAlpha(0)
+    cfA:SetDuration(0.35)
+    cfAnim:SetScript('OnFinished', function() castFlash:SetAlpha(0) end)
+    btn._castFlash = castFlash
+    btn._castFlashAnim = cfAnim
+
     btn:SetScript('OnEvent', TauntMasterMini_Button_OnEvent)
     btn:SetScript('OnShow', TauntMasterMini_Button_OnShow)
     btn:SetScript('OnUpdate', TauntMasterMini_Button_OnUpdate)
@@ -1193,6 +1405,16 @@ local function TMM_CreateUnitButton(index)
     btn._clickOverlay = click
 
     return btn
+end
+
+-- Trigger the click-feedback flash. Only animates a texture's alpha — safe
+-- to call from PostClick (no secure attribute writes, cf. skull PostClick).
+local function TMM_PlayCastFlash(btn)
+    if not btn or not btn._castFlash or not btn._castFlashAnim then return end
+    if not TMM_Get('castFlash') then return end
+    btn._castFlashAnim:Stop()
+    btn._castFlash:SetAlpha(0.55)
+    btn._castFlashAnim:Play()
 end
 
 TMM_ConfigureClickAction = function(btn, unit)
@@ -1270,20 +1492,24 @@ TMM_ConfigureClickAction = function(btn, unit)
         end)
         click:SetScript('PostClick', function(_, which)
             print(string.format('TMM PostClick %s executed', which))
+            TMM_PlayCastFlash(btn)
         end)
     else
         click:SetScript('PreClick', nil)
-        click:SetScript('PostClick', nil)
+        click:SetScript('PostClick', function()
+            TMM_PlayCastFlash(btn)
+        end)
     end
 end
 
 TMM_RebuildRoster = function()
     TMM_EnsureDefaults()
+    TMM_ApplyFrameStyle()  -- combat-safe; run before the lockdown early-return
     if InCombatLockdown() then return end
     local parent = TauntMasterMini_Header or UIParent
 
-    -- Hide when not in party/raid if option is enabled
-    if TMM_Get('hideWhenSolo') and not IsInGroup() then
+    -- Hide when not in party/raid if option is enabled (test mode overrides it)
+    if TMM_TestCount == 0 and TMM_Get('hideWhenSolo') and not IsInGroup() then
         parent:Hide()
         return
     elseif not TauntMasterMiniDBChar.hideTM then
@@ -1294,7 +1520,11 @@ TMM_RebuildRoster = function()
     local num = GetNumGroupMembers()
     local hideSelf = not TMM_Get('showSelf')
     local filterDps = TMM_Get('hideDpsInRaid') and IsInRaid()
-    if IsInRaid() and num > 0 then
+    if TMM_TestCount > 0 then
+        -- Test/config mode: N dummy bars, all bound to 'player' so every
+        -- secure macro and WoW API call stays valid and taint-free.
+        for _ = 1, TMM_TestCount do table.insert(units, 'player') end
+    elseif IsInRaid() and num > 0 then
         for i = 1, num do
             local raidUnit = 'raid' .. i
             if not (hideSelf and TMM_IsPlayer(raidUnit)) then
@@ -1313,12 +1543,24 @@ TMM_RebuildRoster = function()
         for i = 1, num - 1 do table.insert(units, 'party' .. i) end
     else
         if not hideSelf then table.insert(units, 'player') end
+        -- Solo/world mode: also show a live "target" bar (threat/health of
+        -- whatever you're targeting — world elites, rares, etc.).
+        if TMM_Get('soloShowTarget') then table.insert(units, 'target') end
     end
+
+    TMM_SortUnits(units)
 
     local perCol = TMM_Get('unitsPerColumn') or 10
     local maxCols = TMM_Get('maxColumns') or 4
     local bw = TMM_Get('width') or 75
     local bh = TMM_Get('height') or 30
+
+    -- Compact (icon-only) mode: each unit is a bh x bh threat-coloured
+    -- square, no class/role icon columns and no name.
+    local compact = TMM_Get('compactMode')
+    local ebw = compact and bh or bw                       -- effective bar width
+    local leftPad = compact and 0 or (bh + 2)              -- class-icon gutter (full only)
+    local cellW = compact and bh or (bh + 2 + bw + 2 + bh) -- classIcon+gap+bar+gap+roleIcon
 
     local needed = math.min(#units, perCol * maxCols)
 
@@ -1326,7 +1568,7 @@ TMM_RebuildRoster = function()
         if not TMMButtons[i] then
             TMMButtons[i] = TMM_CreateUnitButton(i)
         end
-        TMMButtons[i]:SetSize(bw, bh)
+        TMMButtons[i]:SetSize(ebw, bh)
         if TMMButtons[i]._classIcon then
             TMMButtons[i]._classIcon:SetSize(bh, bh)
             TMMButtons[i]._classIcon:Hide()
@@ -1339,6 +1581,9 @@ TMM_RebuildRoster = function()
 
     for i = needed + 1, #TMMButtons do
         if TMMButtons[i] then
+            TMMButtons[i]._testIndex = nil
+            TMMButtons[i]._testClass = nil
+            TMMButtons[i]._testRole = nil
             TMMButtons[i]:Hide()
             if TMMButtons[i]._classIcon then TMMButtons[i]._classIcon:Hide() end
             if TMMButtons[i]._roleIcon then TMMButtons[i]._roleIcon:Hide() end
@@ -1359,21 +1604,47 @@ TMM_RebuildRoster = function()
         local col = math.floor((i - 1) / perCol)
         if not colY[col] then colY[col] = 0 end
         local yOff = colY[col]
-        -- Offset right by bar height + gap for class icon (left) and role icon (right)
-        local cellW = bh + 2 + bw + 2 + bh  -- classIcon + gap + bar + gap + roleIcon
-        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + bh + 2 + col * (cellW + 6), -topOffset - yOff)
+        btn:SetPoint('TOPLEFT', parent, 'TOPLEFT', 5 + leftPad + col * (cellW + 6), -topOffset - yOff)
         colY[col] = yOff + bh + 4
         if colY[col] > totalH then totalH = colY[col] end
         btn:SetAttribute('unit', unit)
+        btn._testIndex = (TMM_TestCount > 0) and i or nil
+        if TMM_TestCount > 0 then
+            -- Randomise class/role per bar so the test layout looks like a
+            -- real mixed group instead of all-tank. Rolled once per rebuild
+            -- and stored, so the ~10fps icon refresh stays stable.
+            btn._testClass = TMM_TEST_CLASSES[math.random(#TMM_TEST_CLASSES)]
+            btn._testRole = TMM_TEST_ROLES[math.random(#TMM_TEST_ROLES)]
+        else
+            btn._testClass = nil
+            btn._testRole = nil
+        end
         TMM_ConfigureClickAction(btn, unit)
         btn:Show()
         TauntMasterMini_Button_OnShow(btn)
+        -- Test mode: label bars Test 1..N (OnShow set the real player name)
+        if TMM_TestCount > 0 and btn.name and not compact then
+            btn.name:Show()
+            btn.name:SetText('Test ' .. i)
+            btn.name:SetTextColor(1, 1, 1)
+        end
     end
 
     local cols = math.min(maxCols, math.max(1, math.ceil(needed / perCol)))
     local handleExtra = (parent._dragHandle and parent._dragHandle:IsShown()) and DRAG_HANDLE_HEIGHT or 0
-    local cellW = bh + 2 + bw + 2 + bh  -- classIcon + gap + bar + gap + roleIcon
     parent:SetSize(10 + cols * (cellW + 6), 10 + totalH + handleExtra)
+
+    -- Refresh the interrupt button's macrotext/icon from clean, out-of-combat
+    -- code (RebuildRoster already early-returned if InCombatLockdown).
+    if TauntMasterMini_Header and TauntMasterMini_Header._configureInterrupt then
+        TauntMasterMini_Header._configureInterrupt()
+    end
+    if TauntMasterMini_Header and TauntMasterMini_Header._configureTaunts then
+        TauntMasterMini_Header._configureTaunts()
+    end
+    if TauntMasterMini_Header and TauntMasterMini_Header._layoutTopRow then
+        TauntMasterMini_Header._layoutTopRow()
+    end
 end
 
 TMM_DebugDump = function()
@@ -1388,43 +1659,14 @@ TMM_DebugDump = function()
     end
 end
 
--- Skull-marker system -------------------------------------------------------
--- Once an addon touches UnitThreatSituation, its ENTIRE Lua environment is
--- tainted.  Every WoW API return value becomes a "secret" value that cannot
--- be compared — not just threat APIs but UnitGUID, GetRaidTargetIndex, etc.
---
--- Solution:
--- 1) SecureActionButtonTemplate with macro "/targetmarker 8" — the engine
---    executes this in a secure context, bypassing addon taint entirely.
--- 2) A simple boolean toggle for the icon brightness — NO API return values
---    are ever compared.  PostClick flips the bool.  Target-switch dims it.
-
-local _skullActive = false      -- true = skull is currently placed
-local _skullIconTex = nil       -- set after header creation
-
-local function TMM_SetSkullIconBright(bright)
-    local tex = _skullIconTex
-    if not tex then return end
-    if bright then
-        tex:SetDesaturated(false)
-        tex:SetVertexColor(1, 1, 1, 1)
-    else
-        tex:SetDesaturated(true)
-        tex:SetVertexColor(0.5, 0.5, 0.5, 0.6)
-    end
-end
-
--- When the player switches target, dim the icon and show the place button so
--- the next click always places skull on the new target.
--- Show/Hide are not combat-protected, so this is safe from tainted event code.
--- On target change just dim the icon. The _onclick handler on the skull button
--- reads GetRaidTargetIndex fresh each click so no state reset is needed.
-local TMMSkullEvents = CreateFrame('Frame')
-TMMSkullEvents:RegisterEvent('PLAYER_TARGET_CHANGED')
-TMMSkullEvents:SetScript('OnEvent', function()
-    _skullActive = false
-    TMM_SetSkullIconBright(false)
-end)
+-- Raid-marker system --------------------------------------------------------
+-- The standalone top-centre skull button was removed; raid markers now live
+-- in the bottom marker bar (markers 1-8, skull = 8). Each marker is a
+-- SecureActionButtonTemplate with a static "/targetmarker N" macro — the
+-- engine executes it in a secure context (bypassing addon taint) and the
+-- macro self-toggles (clicking N again removes N). A taint-safe, visual-only
+-- PostClick flips a per-button boolean for the bright/dim "active" look;
+-- PLAYER_TARGET_CHANGED dims them all (state set up in the marker block).
 
 -- Pull Alert ---------------------------------------------------------------
 
@@ -1481,6 +1723,11 @@ local function TMM_ShowPullFlash(name, customMsg)
     TMMPullFlash:Show()
     TMMPullFlash._ag:Stop()
     TMMPullFlash._ag:Play()
+    -- Optional audio cue. Single chokepoint for both first-pull and normal
+    -- alerts. Master sound channel so it is audible even with SFX low.
+    if TMM_Get('pullAlertSound') ~= false then
+        PlaySound(SOUNDKIT and SOUNDKIT.RAID_WARNING or 8959, 'Master')
+    end
     C_Timer.After(3, function()
         if TMMPullFlash and TMMPullFlash:IsShown() then
             TMMPullFlash._ag:Stop()
@@ -1498,6 +1745,19 @@ local function TMM_GetChatChannel()
         return 'PARTY'
     end
     return nil
+end
+
+-- Local, NON-protected on-screen "raid warning" banner. Replaces the old
+-- automated SendChatMessage, which is a PROTECTED call when fired from a
+-- tainted combat event handler (ADDON_ACTION_BLOCKED) and is exactly the
+-- automated-combat-comms pattern Midnight's addon disarmament forbids.
+local function TMM_RaidWarn(msg)
+    if RaidNotice_AddMessage and RaidWarningFrame then
+        RaidNotice_AddMessage(RaidWarningFrame, msg,
+            (ChatTypeInfo and ChatTypeInfo['RAID_WARNING']) or { r = 1, g = 0.3, b = 0.1 })
+    else
+        print('|cFFFF4400TauntMasterMini:|r ' .. msg)
+    end
 end
 
 local function TMM_HandlePullEvent(unit)
@@ -1545,10 +1805,7 @@ local function TMM_HandlePullEvent(unit)
             TMM_ShowPullFlash(name, flashMsg)
             print(string.format('|cFFFF8800TauntMasterMini:|r 1st Pull by |cFFFFFFFF%s|r!', name))
             if TMM_Get('pullAlertPartyChat') then
-                local channel = TMM_GetChatChannel()
-                if channel then
-                    SendChatMessage('1st Pull by ' .. name .. '!', channel)
-                end
+                TMM_RaidWarn('1st Pull by ' .. name .. '!')
             end
             return
         end
@@ -1559,10 +1816,7 @@ local function TMM_HandlePullEvent(unit)
     print(string.format('|cFFFF4400TauntMasterMini:|r |cFFFFFFFF%s|r pulled aggro!', name))
 
     if TMM_Get('pullAlertPartyChat') then
-        local channel = TMM_GetChatChannel()
-        if channel then
-            SendChatMessage(name .. ' pulled aggro!', channel)
-        end
+        TMM_RaidWarn(name .. ' pulled aggro!')
     end
 end
 
@@ -1573,7 +1827,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(360, 800)
+        f:SetSize(380, 660)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1600,12 +1854,51 @@ TMM_CreateOrInitUI = function()
         -- SavedVariables are loaded (ADDON_LOADED fires after UI creation).
         f._tmmChecks = {}
         f._tmmSliders = {}
+        f._pages = {}
+        f._tabs = {}
 
-        local y = -50
+        -- Tab system: fixed-size window, one page visible at a time, so the
+        -- panel always fits on screen (replaces the old scroll-less tall list).
+        local PAGE_X, PAGE_Y = 10, -66
+        local PAGE_W, PAGE_H = 360, 540
+
+        local curPage  -- helpers below add controls to whichever page is current
+
+        local function SetPage(p)
+            for _, pg in ipairs(f._pages) do pg:Hide() end
+            for _, tb in ipairs(f._tabs) do
+                if tb._page == p then tb:LockHighlight() else tb:UnlockHighlight() end
+            end
+            p:Show()
+        end
+
+        local function NewPage(tabLabel)
+            local pg = CreateFrame('Frame', nil, f)
+            pg:SetPoint('TOPLEFT', PAGE_X, PAGE_Y)
+            pg:SetSize(PAGE_W, PAGE_H)
+            pg._y = -6
+            pg:Hide()
+            table.insert(f._pages, pg)
+            local idx = #f._pages
+            local tab = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
+            tab:SetSize(86, 22)
+            tab:SetPoint('TOPLEFT', 10 + (idx - 1) * 88, -40)
+            tab:SetText(tabLabel)
+            tab._page = pg
+            tab:SetScript('OnClick', function() SetPage(pg) end)
+            table.insert(f._tabs, tab)
+            return pg
+        end
+
+        local pageLayout  = NewPage('Layout')
+        local pageDisplay = NewPage('Display')
+        local pageSpells  = NewPage('Spells')
+        local pageAlerts  = NewPage('Alerts')
+
         local function AddCheck(label, get, set)
-            local cb = CreateFrame('CheckButton', nil, f, 'UICheckButtonTemplate')
+            local cb = CreateFrame('CheckButton', nil, curPage, 'UICheckButtonTemplate')
             cb.text:SetText(label)
-            cb:SetPoint('TOPLEFT', 16, y)
+            cb:SetPoint('TOPLEFT', 12, curPage._y)
             cb:SetChecked(get())
             cb._tmmGetter = get
             table.insert(f._tmmChecks, cb)
@@ -1617,13 +1910,13 @@ TMM_CreateOrInitUI = function()
                 end
                 set(self:GetChecked())
             end)
-            y = y - 28
+            curPage._y = curPage._y - 28
             return cb
         end
 
         local function AddSlider(label, minV, maxV, step, get, set)
-            local s = CreateFrame('Slider', nil, f, 'OptionsSliderTemplate')
-            s:SetPoint('TOPLEFT', 16, y)
+            local s = CreateFrame('Slider', nil, curPage, 'OptionsSliderTemplate')
+            s:SetPoint('TOPLEFT', 16, curPage._y)
             s:SetMinMaxValues(minV, maxV)
             s:SetValueStep(step)
             s:SetObeyStepOnDrag(true)
@@ -1637,25 +1930,58 @@ TMM_CreateOrInitUI = function()
                 if InCombatLockdown() then return end
                 set(math.floor(value + 0.5))
             end)
-            y = y - 48
+            curPage._y = curPage._y - 48
             return s
         end
 
+        local SORT_ORDER = { 'group', 'tank', 'role', 'name' }
+        local SORT_LABEL = {
+            group = 'Group order', tank = 'Tanks first',
+            role = 'By role', name = 'By name',
+        }
+        local function AddCycle(label, get, set)
+            local b = CreateFrame('Button', nil, curPage, 'UIPanelButtonTemplate')
+            b:SetPoint('TOPLEFT', 16, curPage._y)
+            b:SetSize(320, 24)
+            local function upd()
+                local v = get()
+                b:SetText(label .. ': ' .. (SORT_LABEL[v] or tostring(v)))
+            end
+            upd()
+            -- Page is hidden until shown; refresh on show so it always
+            -- reflects the loaded SavedVariables value.
+            b:SetScript('OnShow', upd)
+            b:SetScript('OnClick', function()
+                if InCombatLockdown() then
+                    print('TauntMasterMini: Cannot change this during combat.')
+                    return
+                end
+                local cur, idx = get(), 1
+                for i, v in ipairs(SORT_ORDER) do
+                    if v == cur then idx = i break end
+                end
+                set(SORT_ORDER[(idx % #SORT_ORDER) + 1])
+                upd()
+            end)
+            curPage._y = curPage._y - 30
+            return b
+        end
+
         local function AddSpellDropdown(label, get, set)
-            local title = f:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
-            title:SetPoint('TOPLEFT', 16, y)
-            title:SetText(label)
-            y = y - 20
+            local lbl = curPage:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+            lbl:SetPoint('TOPLEFT', 16, curPage._y)
+            lbl:SetText(label)
+            curPage._y = curPage._y - 20
 
             -- Spell icon to the left of the button
-            local iconFrame = CreateFrame('Frame', nil, f)
+            local iconFrame = CreateFrame('Frame', nil, curPage)
             iconFrame:SetSize(24, 24)
-            iconFrame:SetPoint('TOPLEFT', 16, y)
+            iconFrame:SetPoint('TOPLEFT', 16, curPage._y)
             local iconTex = iconFrame:CreateTexture(nil, 'ARTWORK')
             iconTex:SetAllPoints()
             iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)  -- trim default icon border
 
-            local button = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
+            local button = CreateFrame('Button', nil, curPage, 'UIPanelButtonTemplate')
             button:SetPoint('LEFT', iconFrame, 'RIGHT', 4, 0)
             button:SetSize(200, 24)
             button.getterFunction = get
@@ -1683,12 +2009,13 @@ TMM_CreateOrInitUI = function()
                 end
                 TMM_ShowSpellPicker(self)
             end)
-            y = y - 34
+            curPage._y = curPage._y - 34
             return button
         end
 
 
         TMMOptionsMenu = f
+        curPage = pageLayout
 
         AddSlider('Button Width', 50, 200, 1, function()
             return TMM_Get('width') or 75
@@ -1734,6 +2061,58 @@ TMM_CreateOrInitUI = function()
             end
         end)
 
+        AddSlider('Frame Scale (%)', 50, 150, 5, function()
+            return math.floor((tonumber(TMM_Get('scale')) or 1.0) * 100 + 0.5)
+        end, function(v)
+            TMM_Set('scale', v / 100)
+            TMM_ApplyFrameStyle()
+        end)
+
+        AddSlider('Frame Opacity (%)', 20, 100, 5, function()
+            return math.floor((tonumber(TMM_Get('opacity')) or 1.0) * 100 + 0.5)
+        end, function(v)
+            TMM_Set('opacity', v / 100)
+            TMM_ApplyFrameStyle()
+        end)
+
+        AddCycle('Sort', function()
+            return TMM_Get('sortMode') or 'group'
+        end, function(v)
+            TMM_Set('sortMode', v)
+            if InCombatLockdown() then
+                TauntMasterMini_Header._tmmPendingRebuild = 1
+            else
+                TMM_RebuildRoster()
+            end
+        end)
+
+        -- Test mode toggle (same TMM_TestCount the /tm test command drives)
+        local TEST_STEPS = { 0, 5, 10, 20 }
+        local testBtn = CreateFrame('Button', nil, curPage, 'UIPanelButtonTemplate')
+        testBtn:SetPoint('TOPLEFT', 16, curPage._y)
+        testBtn:SetSize(320, 24)
+        local function testUpd()
+            testBtn:SetText('Test Bars: ' ..
+                (TMM_TestCount > 0 and tostring(TMM_TestCount) or 'Off'))
+        end
+        testUpd()
+        testBtn:SetScript('OnShow', testUpd)
+        testBtn:SetScript('OnClick', function()
+            if InCombatLockdown() then
+                print('|cFF00FFFFTauntMasterMini:|r cannot change test mode in combat.')
+                return
+            end
+            local idx = 1
+            for i, v in ipairs(TEST_STEPS) do
+                if v == TMM_TestCount then idx = i break end
+            end
+            TMM_TestCount = TEST_STEPS[(idx % #TEST_STEPS) + 1]
+            testUpd()
+            TMM_RebuildRoster()
+        end)
+        curPage._y = curPage._y - 30
+
+        curPage = pageSpells
         f._leftSpellBtn = AddSpellDropdown('Left Click Spell', function()
             return TMM_GetLeftSpell()
         end, function(val)
@@ -1758,7 +2137,22 @@ TMM_CreateOrInitUI = function()
             end
         end)
 
-        y = y - 12
+        f._interruptSpellBtn = AddSpellDropdown('Interrupt Spell', function()
+            return TMM_GetInterruptSpell()
+        end, function(val)
+            TauntMasterMiniDBChar.interruptSpell = val
+            wipe(TMM_spellIconCache)
+            if InCombatLockdown() then
+                TauntMasterMini_Header._tmmPendingRebuild = 1
+            else
+                TMM_RebuildRoster()
+            end
+        end)
+        f._interruptSpellBtn._spellFilter = function(n)
+            return TMM_INTERRUPTS[n] == true
+        end
+
+        curPage = pageDisplay
         AddCheck('Show Minimap Icon', function()
             return not (TMM_MinimapSettings().hide)
         end, function(val)
@@ -1774,6 +2168,59 @@ TMM_CreateOrInitUI = function()
                 if btn:IsShown() then
                     TauntMasterMini_Button_OnShow(btn)
                 end
+            end
+        end)
+
+        AddCheck('Compact Mode  (icon-only squares, no names)', function()
+            return TMM_Get('compactMode') or false
+        end, function(val)
+            TMM_Set('compactMode', val)
+            if InCombatLockdown() then
+                TauntMasterMini_Header._tmmPendingRebuild = 1
+            else
+                TMM_RebuildRoster()
+            end
+        end)
+
+        AddCheck('Flash Bar on Click  (cast feedback)', function()
+            return TMM_Get('castFlash') ~= false
+        end, function(val)
+            TMM_Set('castFlash', val)
+        end)
+
+        AddCheck('Show Spell Cooldown Indicators  (left & right of skull)', function()
+            return TMM_Get('tauntCDIndicator') ~= false
+        end, function(val)
+            TMM_Set('tauntCDIndicator', val)
+            if TauntMasterMini_Header and TauntMasterMini_Header._updateTauntCDVisible then
+                TauntMasterMini_Header._updateTauntCDVisible()
+            end
+        end)
+
+        AddCheck('Show Interrupt Button  (set spell in Spells tab)', function()
+            return TMM_Get('showInterruptBtn') ~= false
+        end, function(val)
+            TMM_Set('showInterruptBtn', val)
+            if TauntMasterMini_Header and TauntMasterMini_Header._updateInterruptVisible then
+                TauntMasterMini_Header._updateInterruptVisible()
+            end
+        end)
+
+        AddCheck('Show Raid Marker Bar  (8 markers below the frame)', function()
+            return TMM_Get('showMarkerBar') == true
+        end, function(val)
+            TMM_Set('showMarkerBar', val and true or false)
+            if TauntMasterMini_Header and TauntMasterMini_Header._updateMarkerBar then
+                TauntMasterMini_Header._updateMarkerBar()
+            end
+        end)
+
+        AddCheck('Show Target/Focus Taunt Buttons', function()
+            return TMM_Get('showTauntButtons') == true
+        end, function(val)
+            TMM_Set('showTauntButtons', val and true or false)
+            if TauntMasterMini_Header and TauntMasterMini_Header._updateTauntBtns then
+                TauntMasterMini_Header._updateTauntBtns()
             end
         end)
 
@@ -1808,6 +2255,15 @@ TMM_CreateOrInitUI = function()
             end
         end)
 
+        AddCheck('Solo: show Target bar  (threat on your target)', function()
+            return TMM_Get('soloShowTarget') == true
+        end, function(val)
+            TMM_Set('soloShowTarget', val and true or false)
+            if not InCombatLockdown() then
+                TMM_RebuildRoster()
+            end
+        end)
+
         AddCheck('Hide DPS In Raid  (show tanks & healers only)', function()
             return TMM_Get('hideDpsInRaid') or false
         end, function(val)
@@ -1823,22 +2279,32 @@ TMM_CreateOrInitUI = function()
             TMM_SetLocked(val)
         end)
 
-        y = y - 6
-        AddSlider('Skull Marker Size', 12, 40, 1, function()
+        curPage._y = curPage._y - 6
+        AddSlider('Marker Button Size', 12, 40, 1, function()
             return TMM_Get('skullSize') or 20
         end, function(v)
             TMM_Set('skullSize', v)
-            if TauntMasterMini_Header and TauntMasterMini_Header._skullBtn then
-                TauntMasterMini_Header._skullBtn:SetSize(v, v)
+            local h = TauntMasterMini_Header
+            if h and h._markerBtns then
+                for _, mb in ipairs(h._markerBtns) do mb:SetSize(v, v) end
+            end
+        end)
+
+        AddSlider('Interrupt Button Size', 12, 40, 1, function()
+            return TMM_Get('interruptSize') or 20
+        end, function(v)
+            TMM_Set('interruptSize', v)
+            if TauntMasterMini_Header and TauntMasterMini_Header._interruptBtn then
+                TauntMasterMini_Header._interruptBtn:SetSize(v, v)
             end
         end)
 
         -- Pull Alert section
-        y = y - 14
-        local pullHeader = f:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
-        pullHeader:SetPoint('TOPLEFT', 16, y)
+        curPage = pageAlerts
+        local pullHeader = pageAlerts:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+        pullHeader:SetPoint('TOPLEFT', 16, curPage._y)
         pullHeader:SetText('|cFFFF9900Pull Alerts|r')
-        y = y - 22
+        curPage._y = curPage._y - 24
 
         AddCheck('Alert when non-tank pulls  (flash + local chat)', function()
             return TMM_Get('pullAlertEnabled') ~= false
@@ -1852,11 +2318,20 @@ TMM_CreateOrInitUI = function()
             TMM_Set('firstPullNotification', val)
         end)
 
-        AddCheck('Announce pull in party/instance chat  (/p or /i)', function()
+        AddCheck('Announce pull on-screen  (big raid-warning banner)', function()
             return TMM_Get('pullAlertPartyChat') ~= false
         end, function(val)
             TMM_Set('pullAlertPartyChat', val)
         end)
+
+        AddCheck('Play sound on pull alert', function()
+            return TMM_Get('pullAlertSound') ~= false
+        end, function(val)
+            TMM_Set('pullAlertSound', val)
+        end)
+
+        -- Show the Layout tab by default
+        SetPage(pageLayout)
 
         -- Reset Defaults button
         local resetBtn = CreateFrame('Button', nil, f, 'UIPanelButtonTemplate')
@@ -1886,6 +2361,9 @@ TMM_CreateOrInitUI = function()
                     end
                     if TMMOptionsMenu._rightSpellBtn and TMMOptionsMenu._rightSpellBtn.refreshText then
                         TMMOptionsMenu._rightSpellBtn:refreshText()
+                    end
+                    if TMMOptionsMenu._interruptSpellBtn and TMMOptionsMenu._interruptSpellBtn.refreshText then
+                        TMMOptionsMenu._interruptSpellBtn:refreshText()
                     end
                     for _, cb in ipairs(TMMOptionsMenu._tmmChecks or {}) do
                         if cb._tmmGetter then cb:SetChecked(cb._tmmGetter()) end
@@ -1968,71 +2446,374 @@ TMM_CreateOrInitUI = function()
         handle:Hide()  -- hidden by default (locked state)
         header._dragHandle = handle
 
-        local skullBtn = CreateFrame('Button', 'TMMSkullToggle', UIParent,
-            'SecureActionButtonTemplate')
+        -- Shared size for the top control icons (CDs) and the marker bar.
         local skullSz = TMM_Get('skullSize') or 20
-        skullBtn:SetSize(skullSz, skullSz)
-        skullBtn:SetPoint('BOTTOM', header, 'TOP', 0, 2)
-        skullBtn:SetFrameStrata(header:GetFrameStrata())
-        skullBtn:SetFrameLevel(header:GetFrameLevel() + 5)
-        skullBtn:SetAttribute('type', 'macro')
-        skullBtn:SetAttribute('macrotext', '/targetmarker 8')
-        skullBtn:SetAttribute('skull-state', 'off')
-        skullBtn:RegisterForClicks('AnyUp')
 
-        -- Use SecureHandlerWrapScript to swap macrotext BEFORE the action fires.
-        -- The preBody runs in an untainted restricted environment so SetAttribute
-        -- is allowed even in combat — no ADDON_ACTION_BLOCKED errors.
-        local skullWrapper = CreateFrame('Frame', nil, UIParent,
-            'SecureHandlerBaseTemplate')
-        SecureHandlerWrapScript(skullBtn, 'OnClick', skullWrapper, [[
-            local state = self:GetAttribute('skull-state') or 'off'
-            if state == 'off' then
-                self:SetAttribute('macrotext', '/targetmarker 8')
-                self:SetAttribute('skull-state', 'on')
-            else
-                self:SetAttribute('macrotext', '/targetmarker 0')
-                self:SetAttribute('skull-state', 'off')
+        -- Spell cooldown indicators (one per click spell), flanking the
+        -- skull: left-click spell to the LEFT of the skull, right-click
+        -- spell to the RIGHT. EVENT-BASED ONLY — never calls the secret
+        -- C_Spell.GetSpellCooldown. We watch the player's own
+        -- UNIT_SPELLCAST_SUCCEEDED, record GetTime(), and feed our own
+        -- numbers to a Cooldown widget (C-side, taint-allowed). Durations
+        -- come from a small known-CD table; 8s is the baseline for the
+        -- six tank taunts and a sane default for anything unknown.
+        local TMM_SPELL_CD = {
+            ['Taunt'] = 8, ['Hand of Reckoning'] = 8, ['Dark Command'] = 8,
+            ['Growl'] = 8, ['Provoke'] = 8, ['Torment'] = 8,
+        }
+        local TMM_DEFAULT_CD = 8
+
+        local function TMM_MakeCDIndicator(idName, getter)
+            local fr = CreateFrame('Frame', idName, header)
+            fr:SetSize(skullSz, skullSz)
+            fr:SetFrameLevel(header:GetFrameLevel() + 25)
+            local ic = fr:CreateTexture(nil, 'ARTWORK')
+            ic:SetAllPoints()
+            ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            local sw = CreateFrame('Cooldown', idName .. 'Swipe', fr, 'CooldownFrameTemplate')
+            sw:SetAllPoints()
+            sw:SetDrawEdge(false)
+            fr._getter, fr._iconTex, fr._swipe, fr._readyAt = getter, ic, sw, 0
+            -- Throttled: keep the icon in sync with the configured spell and
+            -- brighten/dim by readiness. Only GetTime()/our own numbers.
+            fr:SetScript('OnUpdate', function(self, elapsed)
+                self._t = (self._t or 0) + elapsed
+                if self._t < 0.2 then return end
+                self._t = 0
+                local sp = self._getter()
+                self._iconTex:SetTexture((sp and sp ~= '' and TMM_GetSpellIcon(sp))
+                    or 'Interface/Icons/INV_Misc_QuestionMark')
+                if GetTime() >= (self._readyAt or 0) then
+                    self._iconTex:SetDesaturated(false)
+                    self._iconTex:SetVertexColor(1, 1, 1, 1)
+                else
+                    self._iconTex:SetDesaturated(true)
+                    self._iconTex:SetVertexColor(0.6, 0.6, 0.6, 1)
+                end
+            end)
+            return fr
+        end
+
+        -- Positions for leftCD/rightCD (and intBtn/taunt buttons) are set by
+        -- header._layoutTopRow(), which reflows only the enabled icons with
+        -- no gaps, centred above the bars.
+        local leftCD = TMM_MakeCDIndicator('TMMLeftCD', TMM_GetLeftSpell)
+        local rightCD = TMM_MakeCDIndicator('TMMRightCD', TMM_GetRightSpell)
+        header._leftCD, header._rightCD = leftCD, rightCD
+
+        local function TMM_UpdateTauntCDVisible()
+            local show = TMM_Get('tauntCDIndicator') ~= false
+            if show then leftCD:Show(); rightCD:Show()
+            else leftCD:Hide(); rightCD:Hide() end
+            if header._layoutTopRow then header._layoutTopRow() end
+        end
+        header._updateTauntCDVisible = TMM_UpdateTauntCDVisible
+        TMM_UpdateTauntCDVisible()
+
+        local cdTracker = CreateFrame('Frame')
+        cdTracker:RegisterUnitEvent('UNIT_SPELLCAST_SUCCEEDED', 'player')
+        cdTracker:SetScript('OnEvent', function(_, _, _, _, spellID)
+            local castName = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
+            if not castName then return end
+            local now = GetTime()
+            if castName == TMM_GetLeftSpell() then
+                local d = TMM_SPELL_CD[castName] or TMM_DEFAULT_CD
+                leftCD._readyAt = now + d
+                leftCD._swipe:SetCooldown(now, d)
             end
-        ]])
-
-        hooksecurefunc(skullBtn, 'SetNormalTexture', function(self)
-            local nt = self:GetNormalTexture()
-            if nt then nt:SetAlpha(0) end
+            if castName == TMM_GetRightSpell() then
+                local d = TMM_SPELL_CD[castName] or TMM_DEFAULT_CD
+                rightCD._readyAt = now + d
+                rightCD._swipe:SetCooldown(now, d)
+            end
         end)
-        local nt = skullBtn:GetNormalTexture()
-        if nt then nt:SetAlpha(0) end
+        header._cdTracker = cdTracker
 
-        local skullIcon = skullBtn:CreateTexture(nil, 'ARTWORK')
-        skullIcon:SetAllPoints()
-        skullIcon:SetTexture('Interface/TargetingFrame/UI-RaidTargetingIcon_8')
-        skullIcon:SetDesaturated(true)
-        skullIcon:SetVertexColor(0.5, 0.5, 0.5, 0.6)
-        _skullIconTex = skullIcon
+        -- Interrupt slot: a secure one-button cast of the configured
+        -- interrupt on your current target. macrotext is set ONLY from
+        -- clean, combat-guarded code (header._configureInterrupt, driven by
+        -- ADDON_LOADED / TMM_RebuildRoster) — never from a tainted PreClick
+        -- (the 6.5.1 lesson). [Paranoid]
+        local TMM_INT_CD = {
+            ['Pummel'] = 15, ['Mind Freeze'] = 15, ['Skull Bash'] = 15,
+            ['Kick'] = 15, ['Rebuke'] = 15, ['Counterspell'] = 24,
+            ['Spell Lock'] = 24, ['Wind Shear'] = 12, ['Disrupt'] = 15,
+            ['Avenger\'s Shield'] = 15, ['Silence'] = 45, ['Solar Beam'] = 60,
+        }
+        local intBtn = CreateFrame('Button', 'TMMInterruptBtn', UIParent,
+            'SecureActionButtonTemplate')
+        intBtn:SetSize(TMM_Get('interruptSize') or 20, TMM_Get('interruptSize') or 20)
+        intBtn:SetFrameStrata(header:GetFrameStrata())
+        intBtn:SetFrameLevel(header:GetFrameLevel() + 6)
+        intBtn:SetAttribute('type', 'macro')
+        intBtn:SetAttribute('macrotext', '')
+        intBtn:RegisterForClicks('AnyUp')
+        hooksecurefunc(intBtn, 'SetNormalTexture', function(self)
+            local n = self:GetNormalTexture(); if n then n:SetAlpha(0) end
+        end)
+        do local n = intBtn:GetNormalTexture(); if n then n:SetAlpha(0) end end
+        local intIcon = intBtn:CreateTexture(nil, 'ARTWORK')
+        intIcon:SetAllPoints()
+        intIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        local intHl = intBtn:CreateTexture(nil, 'HIGHLIGHT')
+        intHl:SetAllPoints()
+        intHl:SetColorTexture(1, 1, 1, 0.2)
+        local intSwipe = CreateFrame('Cooldown', 'TMMInterruptSwipe', intBtn,
+            'CooldownFrameTemplate')
+        intSwipe:SetAllPoints()
+        intSwipe:SetDrawEdge(false)
+        intBtn._readyAt = 0
 
-        local skullHl = skullBtn:CreateTexture(nil, 'HIGHLIGHT')
-        skullHl:SetAllPoints()
-        skullHl:SetTexture('Interface/TargetingFrame/UI-RaidTargetingIcon_8')
-        skullHl:SetAlpha(0.3)
+        local function TMM_UpdateInterruptVisible()
+            local on = (TMM_Get('showInterruptBtn') ~= false)
+                and (TMM_GetInterruptSpell() ~= '')
+            if on and header:IsShown() then intBtn:Show() else intBtn:Hide() end
+            if header._layoutTopRow then header._layoutTopRow() end
+        end
+        header._updateInterruptVisible = TMM_UpdateInterruptVisible
 
-        -- PostClick is tainted but only reads an attribute and updates visuals.
-        skullBtn:HookScript('PostClick', function()
-            _skullActive = (skullBtn:GetAttribute('skull-state') == 'on')
-            TMM_SetSkullIconBright(_skullActive)
+        hooksecurefunc(header, 'Show', function() TMM_UpdateInterruptVisible() end)
+        hooksecurefunc(header, 'Hide', function() intBtn:Hide() end)
+
+        -- Set macrotext + icon from the configured spell. Never SetAttribute
+        -- in combat (deferred; RebuildRoster re-runs this once combat ends).
+        header._configureInterrupt = function()
+            local sp = TMM_GetInterruptSpell()
+            intIcon:SetTexture((sp ~= '' and TMM_GetSpellIcon(sp))
+                or 'Interface/Icons/INV_Misc_QuestionMark')
+            if InCombatLockdown() then return end
+            if sp ~= '' then
+                intBtn:SetAttribute('macrotext', '/cast [@target,harm,nodead] ' .. sp)
+            else
+                intBtn:SetAttribute('macrotext', '')
+            end
+            TMM_UpdateInterruptVisible()
+        end
+        header._configureInterrupt()
+
+        intBtn:SetScript('OnUpdate', function(self, e)
+            self._t = (self._t or 0) + e
+            if self._t < 0.2 then return end
+            self._t = 0
+            if GetTime() >= (self._readyAt or 0) then
+                intIcon:SetDesaturated(false); intIcon:SetVertexColor(1, 1, 1, 1)
+            else
+                intIcon:SetDesaturated(true); intIcon:SetVertexColor(0.6, 0.6, 0.6, 1)
+            end
         end)
 
-        skullBtn:SetScript('OnEnter', function(self)
+        intBtn:SetScript('OnEnter', function(self)
             GameTooltip:SetOwner(self, 'ANCHOR_TOP')
-            GameTooltip:SetText('Toggle Skull Marker', 1, 1, 1)
-            GameTooltip:AddLine('Click to place/remove skull on current target.', 0.8, 0.8, 0.8, true)
+            GameTooltip:SetText('Interrupt', 1, 1, 1)
+            local sp = TMM_GetInterruptSpell()
+            GameTooltip:AddLine(sp ~= '' and ('Casts ' .. sp .. ' on your target.')
+                or 'Set an interrupt spell in Options > Spells.', 0.8, 0.8, 0.8, true)
             GameTooltip:Show()
         end)
-        skullBtn:SetScript('OnLeave', GameTooltip_Hide)
+        intBtn:SetScript('OnLeave', GameTooltip_Hide)
 
-        hooksecurefunc(header, 'Show', function() skullBtn:Show() end)
-        hooksecurefunc(header, 'Hide', function() skullBtn:Hide() end)
+        local intTracker = CreateFrame('Frame')
+        intTracker:RegisterUnitEvent('UNIT_SPELLCAST_SUCCEEDED', 'player')
+        intTracker:SetScript('OnEvent', function(_, _, _, _, spellID)
+            local nm = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
+            local cur = TMM_GetInterruptSpell()
+            if nm and cur ~= '' and nm == cur then
+                local now = GetTime()
+                local d = TMM_INT_CD[nm] or 15
+                intBtn._readyAt = now + d
+                intSwipe:SetCooldown(now, d)
+            end
+        end)
+        header._interruptBtn = intBtn
+        header._intTracker = intTracker
 
-        header._skullBtn = skullBtn
+        -- Target-taunt / Focus-taunt secure buttons. Same static secure
+        -- pattern as the interrupt: macrotext set ONLY from clean,
+        -- combat-guarded code (header._configureTaunts via ADDON_LOADED /
+        -- TMM_RebuildRoster) — never a tainted PreClick. [Paranoid]
+        local function TMM_MakeTauntBtn(nm, label)
+            local b = CreateFrame('Button', nm, UIParent, 'SecureActionButtonTemplate')
+            b:SetSize(TMM_Get('interruptSize') or 20, TMM_Get('interruptSize') or 20)
+            b:SetFrameStrata(header:GetFrameStrata())
+            b:SetFrameLevel(header:GetFrameLevel() + 6)
+            b:SetAttribute('type', 'macro')
+            b:SetAttribute('macrotext', '')
+            b:RegisterForClicks('AnyUp')
+            hooksecurefunc(b, 'SetNormalTexture', function(self)
+                local t = self:GetNormalTexture(); if t then t:SetAlpha(0) end
+            end)
+            do local t = b:GetNormalTexture(); if t then t:SetAlpha(0) end end
+            local ic = b:CreateTexture(nil, 'ARTWORK')
+            ic:SetAllPoints(); ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            local hl = b:CreateTexture(nil, 'HIGHLIGHT')
+            hl:SetAllPoints(); hl:SetColorTexture(1, 1, 1, 0.2)
+            b._iconTex = ic
+            b:SetScript('OnEnter', function(self)
+                GameTooltip:SetOwner(self, 'ANCHOR_TOP')
+                GameTooltip:SetText(label .. ' Taunt', 1, 1, 1)
+                local ts = TMM_GetTauntSpell()
+                GameTooltip:AddLine(ts and ('Casts ' .. ts .. ' on your ' ..
+                    string.lower(label) .. '.') or 'No taunt for this class.',
+                    0.8, 0.8, 0.8, true)
+                GameTooltip:Show()
+            end)
+            b:SetScript('OnLeave', GameTooltip_Hide)
+            return b
+        end
+        local tgtTauntBtn = TMM_MakeTauntBtn('TMMTargetTaunt', 'Target')
+        local focusTauntBtn = TMM_MakeTauntBtn('TMMFocusTaunt', 'Focus')
+
+        local function TMM_UpdateTauntBtns()
+            local on = (TMM_Get('showTauntButtons') == true)
+                and (TMM_GetTauntSpell() ~= nil) and header:IsShown()
+            if on then tgtTauntBtn:Show(); focusTauntBtn:Show()
+            else tgtTauntBtn:Hide(); focusTauntBtn:Hide() end
+            if header._layoutTopRow then header._layoutTopRow() end
+        end
+        header._updateTauntBtns = TMM_UpdateTauntBtns
+        hooksecurefunc(header, 'Show', function() TMM_UpdateTauntBtns() end)
+        hooksecurefunc(header, 'Hide', function()
+            tgtTauntBtn:Hide(); focusTauntBtn:Hide()
+        end)
+
+        header._configureTaunts = function()
+            local ts = TMM_GetTauntSpell()
+            local icon = ts and TMM_GetSpellIcon(ts)
+            tgtTauntBtn._iconTex:SetTexture(icon or 'Interface/Icons/INV_Misc_QuestionMark')
+            focusTauntBtn._iconTex:SetTexture(icon or 'Interface/Icons/INV_Misc_QuestionMark')
+            if InCombatLockdown() then return end
+            if ts then
+                tgtTauntBtn:SetAttribute('macrotext', '/cast [@target,harm,nodead] ' .. ts)
+                focusTauntBtn:SetAttribute('macrotext', '/cast [@focus,harm,nodead] ' .. ts)
+            else
+                tgtTauntBtn:SetAttribute('macrotext', '')
+                focusTauntBtn:SetAttribute('macrotext', '')
+            end
+            TMM_UpdateTauntBtns()
+        end
+        header._configureTaunts()
+        header._tgtTauntBtn = tgtTauntBtn
+        header._focusTauntBtn = focusTauntBtn
+
+        -- Auto-align the top control row: only the currently-shown icons, in
+        -- fixed order, packed with no gaps and centred just above the bars.
+        -- Called by every visibility updater so the row reflows when icons
+        -- are enabled/disabled. SetPoint is not protected — safe any time.
+        header._layoutTopRow = function()
+            -- intBtn/taunt buttons are secure; moving them in combat is
+            -- protected. Skip in combat — re-run on PLAYER_REGEN_ENABLED.
+            if InCombatLockdown() then return end
+            local order = { leftCD, rightCD, intBtn, tgtTauntBtn, focusTauntBtn }
+            local shown, total = {}, 0
+            local gap = 4
+            for _, b in ipairs(order) do
+                if b and b:IsShown() then
+                    shown[#shown + 1] = b
+                    total = total + b:GetWidth()
+                end
+            end
+            if #shown > 1 then total = total + gap * (#shown - 1) end
+            local x = -total / 2
+            for _, b in ipairs(shown) do
+                b:ClearAllPoints()
+                b:SetPoint('BOTTOMLEFT', header, 'TOP', x, 2)
+                x = x + b:GetWidth() + gap
+            end
+        end
+        header._layoutTopRow()
+
+        -- Multi-marker bar: 8 secure buttons. EXACT proven skull mechanism,
+        -- per marker: a SecureHandlerWrapScript preBody (runs untainted, so
+        -- SetAttribute is legal even in combat) alternates the macrotext
+        -- between "/targetmarker N" (place) and "/targetmarker 0" (clear, the
+        -- same removal the old skull used). PostClick is tainted but only
+        -- READS an attribute + updates visuals. Parented to UIParent like
+        -- the old skull to avoid threat-handler taint propagation. [Paranoid]
+        local MARKER_SZ = TMM_Get('skullSize') or 20
+        local markerBtns = {}
+        local markerWrapper = CreateFrame('Frame', nil, UIParent,
+            'SecureHandlerBaseTemplate')
+        local function TMM_SetMarkerBright(mb, bright)
+            if bright then
+                mb._icon:SetDesaturated(false); mb._icon:SetVertexColor(1, 1, 1, 1)
+            else
+                mb._icon:SetDesaturated(true); mb._icon:SetVertexColor(0.55, 0.55, 0.55, 0.7)
+            end
+        end
+        for n = 1, 8 do
+            local mb = CreateFrame('Button', 'TMMMarker' .. n, UIParent,
+                'SecureActionButtonTemplate')
+            mb:SetSize(MARKER_SZ, MARKER_SZ)
+            if n == 1 then
+                mb:SetPoint('TOPLEFT', header, 'BOTTOMLEFT', 0, -2)
+            else
+                mb:SetPoint('LEFT', markerBtns[n - 1], 'RIGHT', 2, 0)
+            end
+            mb:SetFrameStrata(header:GetFrameStrata())
+            mb:SetFrameLevel(header:GetFrameLevel() + 6)
+            mb:SetAttribute('type', 'macro')
+            -- Per-button place/clear macrotexts + state (set from clean load
+            -- code; the wrapper swaps 'macrotext' between them on each click).
+            mb:SetAttribute('mk-on', '/targetmarker ' .. n)
+            mb:SetAttribute('mk-off', '/targetmarker 0')
+            mb:SetAttribute('macrotext', '/targetmarker ' .. n)
+            mb:SetAttribute('mk-state', 'off')
+            mb:RegisterForClicks('AnyUp')
+            SecureHandlerWrapScript(mb, 'OnClick', markerWrapper, [[
+                local st = self:GetAttribute('mk-state') or 'off'
+                if st == 'off' then
+                    self:SetAttribute('macrotext', self:GetAttribute('mk-on'))
+                    self:SetAttribute('mk-state', 'on')
+                else
+                    self:SetAttribute('macrotext', self:GetAttribute('mk-off'))
+                    self:SetAttribute('mk-state', 'off')
+                end
+            ]])
+            hooksecurefunc(mb, 'SetNormalTexture', function(self)
+                local nt = self:GetNormalTexture(); if nt then nt:SetAlpha(0) end
+            end)
+            do local nt = mb:GetNormalTexture(); if nt then nt:SetAlpha(0) end end
+            local ic = mb:CreateTexture(nil, 'ARTWORK')
+            ic:SetAllPoints()
+            ic:SetTexture('Interface/TargetingFrame/UI-RaidTargetingIcon_' .. n)
+            local hl = mb:CreateTexture(nil, 'HIGHLIGHT')
+            hl:SetAllPoints()
+            hl:SetColorTexture(1, 1, 1, 0.25)
+            mb._icon = ic
+            TMM_SetMarkerBright(mb, false)  -- start dim/inactive
+            -- PostClick is tainted but only READS the secure state attribute
+            -- (no SetAttribute / secure mutation) — exactly the old skull.
+            mb:HookScript('PostClick', function(self)
+                TMM_SetMarkerBright(self, self:GetAttribute('mk-state') == 'on')
+            end)
+            markerBtns[n] = mb
+        end
+        header._markerBtns = markerBtns
+
+        -- On target change, dim every marker icon (visual only — we do NOT
+        -- SetAttribute 'mk-state' from tainted Lua; same minor state desync
+        -- the old skull accepted).
+        local markerReset = CreateFrame('Frame')
+        markerReset:RegisterEvent('PLAYER_TARGET_CHANGED')
+        markerReset:SetScript('OnEvent', function()
+            for _, mb in ipairs(markerBtns) do
+                TMM_SetMarkerBright(mb, false)
+            end
+        end)
+        header._markerReset = markerReset
+
+        local function TMM_UpdateMarkerBar()
+            local on = (TMM_Get('showMarkerBar') == true) and header:IsShown()
+            for _, mb in ipairs(markerBtns) do
+                if on then mb:Show() else mb:Hide() end
+            end
+        end
+        header._updateMarkerBar = TMM_UpdateMarkerBar
+        hooksecurefunc(header, 'Show', function() TMM_UpdateMarkerBar() end)
+        hooksecurefunc(header, 'Hide', function()
+            for _, mb in ipairs(markerBtns) do mb:Hide() end
+        end)
+        TMM_UpdateMarkerBar()
 
         header:SetScript('OnEvent', function(self, event, ...)
             if event == 'ADDON_LOADED' and ... == addonName then
@@ -2042,6 +2823,11 @@ TMM_CreateOrInitUI = function()
                 TMM_ApplyDefaultsForClass()
                 TMM_CopyDefaultsToChar()
                 TMM_UpdateLockState()
+                TMM_ApplyFrameStyle()
+                if self._updateTauntCDVisible then self._updateTauntCDVisible() end
+                if self._updateInterruptVisible then self._updateInterruptVisible() end
+                if self._updateMarkerBar then self._updateMarkerBar() end
+                if self._updateTauntBtns then self._updateTauntBtns() end
 
                 -- Restore saved position
                 TMM_RestoreHeaderPosition()
@@ -2056,10 +2842,18 @@ TMM_CreateOrInitUI = function()
                     end
                 end
 
-                -- Apply saved skull marker size
+                -- Apply saved marker button size
                 local savedSkull = TMM_Get('skullSize')
-                if self._skullBtn and savedSkull then
-                    self._skullBtn:SetSize(savedSkull, savedSkull)
+                if self._markerBtns and savedSkull then
+                    for _, mb in ipairs(self._markerBtns) do
+                        mb:SetSize(savedSkull, savedSkull)
+                    end
+                end
+
+                -- Apply saved interrupt button size
+                local savedInt = TMM_Get('interruptSize')
+                if self._interruptBtn and savedInt then
+                    self._interruptBtn:SetSize(savedInt, savedInt)
                 end
 
                 -- Show/hide header based on saved preference
@@ -2076,6 +2870,9 @@ TMM_CreateOrInitUI = function()
                     end
                     if TMMOptionsMenu._rightSpellBtn and TMMOptionsMenu._rightSpellBtn.refreshText then
                         TMMOptionsMenu._rightSpellBtn:refreshText()
+                    end
+                    if TMMOptionsMenu._interruptSpellBtn and TMMOptionsMenu._interruptSpellBtn.refreshText then
+                        TMMOptionsMenu._interruptSpellBtn:refreshText()
                     end
                     for _, cb in ipairs(TMMOptionsMenu._tmmChecks or {}) do
                         if cb._tmmGetter then cb:SetChecked(cb._tmmGetter()) end
@@ -2104,6 +2901,8 @@ TMM_CreateOrInitUI = function()
                     self._tmmPendingShowState = nil
                     TMM_SetHeaderShown(show)
                 end
+                -- Reflow the top row now that moving secure frames is allowed.
+                if self._layoutTopRow then self._layoutTopRow() end
             elseif event == 'PLAYER_SPECIALIZATION_CHANGED' or event == 'TRAIT_CONFIG_UPDATED' or event == 'SPELLS_CHANGED' then
                 -- Invalidate spell cache so dropdowns show current spec/talent spells
                 TMM_InvalidateSpellCache()
@@ -2121,9 +2920,17 @@ TMM_CreateOrInitUI = function()
                 TMM_UpdateLockState()
             elseif event == 'UNIT_THREAT_SITUATION_UPDATE' then
                 TMM_HandlePullEvent(...)
+            elseif event == 'PLAYER_TARGET_CHANGED' then
+                -- Solo/world mode: rebuild so the target bar's name/icons
+                -- track the new target (threat/health track live regardless).
+                if TMM_Get('soloShowTarget') and not IsInGroup()
+                   and not InCombatLockdown() then
+                    TMM_RebuildRoster()
+                end
             end
         end)
         header:RegisterEvent('ADDON_LOADED')
+        header:RegisterEvent('PLAYER_TARGET_CHANGED')
         header:RegisterEvent('PLAYER_ENTERING_WORLD')
         header:RegisterEvent('GROUP_ROSTER_UPDATE')
         header:RegisterEvent('PLAYER_REGEN_ENABLED')

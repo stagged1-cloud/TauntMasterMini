@@ -1,14 +1,17 @@
 # TauntMasterMini
 
-**Version 6.7.0** | Updated for World of Warcraft: Midnight Pre-Patch (12.0.0)
+**Version 7.0.0** | Updated for World of Warcraft: Midnight (12.0)
 
 A lightweight threat utility for tanks that shows live threat bars, one-click spell casting, full spellbook spell selection, cooldown overlays, out-of-range warnings, and smart group targeting in a compact, movable frame.
 
-### What’s new in 6.7.0
-- Added **role icons** (Tank / Healer / DPS) on every player bar
-- Fixed Show Self being ignored when solo
-- Removed the small green friendly-target indicator that some users mistook for a UI glitch
-- Replaced all `UnitIsUnit` calls with taint-safe GUID comparison
+### What’s new in 7.0.0
+- **Tabbed options window** (Layout / Display / Spells / Alerts) — always fits on screen
+- **Test/config mode** — lay out the frame solo with `/tm test` or the Layout tab
+- **Scale & Opacity** sliders; **bar sort** (group / tanks-first / role / name); **compact icon-only mode**
+- **Dual cooldown indicators**, an **Interrupt slot**, and **Target/Focus taunt** buttons
+- **Raid-marker bar** (all 8 markers, place/remove toggle) — **replaces the old top skull button**
+- **Cast-flash**, **pull-alert sound**, **Edit Mode integration**, and **Solo/world target bar**
+- Fixed a pull-alert `ADDON_ACTION_BLOCKED` (automated combat chat replaced with a local raid-warning banner)
 
 ### Core features
 - Real-time color-coded threat bars for party/raid up to 40 players
