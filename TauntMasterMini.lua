@@ -88,8 +88,9 @@ local DEFAULTS = {
     interruptSpell = '',
     showInterruptBtn = true,
     interruptSize = 20,
-    showMarkerBar = false,
+    showMarkerBar = true,  -- replaces the removed top skull button
     showTauntButtons = false,
+    soloShowTarget = false,
 }
 
 -- Forward declarations
@@ -1542,6 +1543,9 @@ TMM_RebuildRoster = function()
         for i = 1, num - 1 do table.insert(units, 'party' .. i) end
     else
         if not hideSelf then table.insert(units, 'player') end
+        -- Solo/world mode: also show a live "target" bar (threat/health of
+        -- whatever you're targeting — world elites, rares, etc.).
+        if TMM_Get('soloShowTarget') then table.insert(units, 'target') end
     end
 
     TMM_SortUnits(units)
@@ -1638,6 +1642,9 @@ TMM_RebuildRoster = function()
     if TauntMasterMini_Header and TauntMasterMini_Header._configureTaunts then
         TauntMasterMini_Header._configureTaunts()
     end
+    if TauntMasterMini_Header and TauntMasterMini_Header._layoutTopRow then
+        TauntMasterMini_Header._layoutTopRow()
+    end
 end
 
 TMM_DebugDump = function()
@@ -1652,43 +1659,14 @@ TMM_DebugDump = function()
     end
 end
 
--- Skull-marker system -------------------------------------------------------
--- Once an addon touches UnitThreatSituation, its ENTIRE Lua environment is
--- tainted.  Every WoW API return value becomes a "secret" value that cannot
--- be compared — not just threat APIs but UnitGUID, GetRaidTargetIndex, etc.
---
--- Solution:
--- 1) SecureActionButtonTemplate with macro "/targetmarker 8" — the engine
---    executes this in a secure context, bypassing addon taint entirely.
--- 2) A simple boolean toggle for the icon brightness — NO API return values
---    are ever compared.  PostClick flips the bool.  Target-switch dims it.
-
-local _skullActive = false      -- true = skull is currently placed
-local _skullIconTex = nil       -- set after header creation
-
-local function TMM_SetSkullIconBright(bright)
-    local tex = _skullIconTex
-    if not tex then return end
-    if bright then
-        tex:SetDesaturated(false)
-        tex:SetVertexColor(1, 1, 1, 1)
-    else
-        tex:SetDesaturated(true)
-        tex:SetVertexColor(0.5, 0.5, 0.5, 0.6)
-    end
-end
-
--- When the player switches target, dim the icon and show the place button so
--- the next click always places skull on the new target.
--- Show/Hide are not combat-protected, so this is safe from tainted event code.
--- On target change just dim the icon. The _onclick handler on the skull button
--- reads GetRaidTargetIndex fresh each click so no state reset is needed.
-local TMMSkullEvents = CreateFrame('Frame')
-TMMSkullEvents:RegisterEvent('PLAYER_TARGET_CHANGED')
-TMMSkullEvents:SetScript('OnEvent', function()
-    _skullActive = false
-    TMM_SetSkullIconBright(false)
-end)
+-- Raid-marker system --------------------------------------------------------
+-- The standalone top-centre skull button was removed; raid markers now live
+-- in the bottom marker bar (markers 1-8, skull = 8). Each marker is a
+-- SecureActionButtonTemplate with a static "/targetmarker N" macro — the
+-- engine executes it in a secure context (bypassing addon taint) and the
+-- macro self-toggles (clicking N again removes N). A taint-safe, visual-only
+-- PostClick flips a per-button boolean for the bright/dim "active" look;
+-- PLAYER_TARGET_CHANGED dims them all (state set up in the marker block).
 
 -- Pull Alert ---------------------------------------------------------------
 
@@ -1849,7 +1827,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(380, 620)
+        f:SetSize(380, 660)
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1882,7 +1860,7 @@ TMM_CreateOrInitUI = function()
         -- Tab system: fixed-size window, one page visible at a time, so the
         -- panel always fits on screen (replaces the old scroll-less tall list).
         local PAGE_X, PAGE_Y = 10, -66
-        local PAGE_W, PAGE_H = 360, 500
+        local PAGE_W, PAGE_H = 360, 540
 
         local curPage  -- helpers below add controls to whichever page is current
 
@@ -2277,6 +2255,15 @@ TMM_CreateOrInitUI = function()
             end
         end)
 
+        AddCheck('Solo: show Target bar  (threat on your target)', function()
+            return TMM_Get('soloShowTarget') == true
+        end, function(val)
+            TMM_Set('soloShowTarget', val and true or false)
+            if not InCombatLockdown() then
+                TMM_RebuildRoster()
+            end
+        end)
+
         AddCheck('Hide DPS In Raid  (show tanks & healers only)', function()
             return TMM_Get('hideDpsInRaid') or false
         end, function(val)
@@ -2293,12 +2280,13 @@ TMM_CreateOrInitUI = function()
         end)
 
         curPage._y = curPage._y - 6
-        AddSlider('Skull Marker Size', 12, 40, 1, function()
+        AddSlider('Marker Button Size', 12, 40, 1, function()
             return TMM_Get('skullSize') or 20
         end, function(v)
             TMM_Set('skullSize', v)
-            if TauntMasterMini_Header and TauntMasterMini_Header._skullBtn then
-                TauntMasterMini_Header._skullBtn:SetSize(v, v)
+            local h = TauntMasterMini_Header
+            if h and h._markerBtns then
+                for _, mb in ipairs(h._markerBtns) do mb:SetSize(v, v) end
             end
         end)
 
@@ -2458,71 +2446,8 @@ TMM_CreateOrInitUI = function()
         handle:Hide()  -- hidden by default (locked state)
         header._dragHandle = handle
 
-        local skullBtn = CreateFrame('Button', 'TMMSkullToggle', UIParent,
-            'SecureActionButtonTemplate')
+        -- Shared size for the top control icons (CDs) and the marker bar.
         local skullSz = TMM_Get('skullSize') or 20
-        skullBtn:SetSize(skullSz, skullSz)
-        skullBtn:SetPoint('BOTTOM', header, 'TOP', 0, 2)
-        skullBtn:SetFrameStrata(header:GetFrameStrata())
-        skullBtn:SetFrameLevel(header:GetFrameLevel() + 5)
-        skullBtn:SetAttribute('type', 'macro')
-        skullBtn:SetAttribute('macrotext', '/targetmarker 8')
-        skullBtn:SetAttribute('skull-state', 'off')
-        skullBtn:RegisterForClicks('AnyUp')
-
-        -- Use SecureHandlerWrapScript to swap macrotext BEFORE the action fires.
-        -- The preBody runs in an untainted restricted environment so SetAttribute
-        -- is allowed even in combat — no ADDON_ACTION_BLOCKED errors.
-        local skullWrapper = CreateFrame('Frame', nil, UIParent,
-            'SecureHandlerBaseTemplate')
-        SecureHandlerWrapScript(skullBtn, 'OnClick', skullWrapper, [[
-            local state = self:GetAttribute('skull-state') or 'off'
-            if state == 'off' then
-                self:SetAttribute('macrotext', '/targetmarker 8')
-                self:SetAttribute('skull-state', 'on')
-            else
-                self:SetAttribute('macrotext', '/targetmarker 0')
-                self:SetAttribute('skull-state', 'off')
-            end
-        ]])
-
-        hooksecurefunc(skullBtn, 'SetNormalTexture', function(self)
-            local nt = self:GetNormalTexture()
-            if nt then nt:SetAlpha(0) end
-        end)
-        local nt = skullBtn:GetNormalTexture()
-        if nt then nt:SetAlpha(0) end
-
-        local skullIcon = skullBtn:CreateTexture(nil, 'ARTWORK')
-        skullIcon:SetAllPoints()
-        skullIcon:SetTexture('Interface/TargetingFrame/UI-RaidTargetingIcon_8')
-        skullIcon:SetDesaturated(true)
-        skullIcon:SetVertexColor(0.5, 0.5, 0.5, 0.6)
-        _skullIconTex = skullIcon
-
-        local skullHl = skullBtn:CreateTexture(nil, 'HIGHLIGHT')
-        skullHl:SetAllPoints()
-        skullHl:SetTexture('Interface/TargetingFrame/UI-RaidTargetingIcon_8')
-        skullHl:SetAlpha(0.3)
-
-        -- PostClick is tainted but only reads an attribute and updates visuals.
-        skullBtn:HookScript('PostClick', function()
-            _skullActive = (skullBtn:GetAttribute('skull-state') == 'on')
-            TMM_SetSkullIconBright(_skullActive)
-        end)
-
-        skullBtn:SetScript('OnEnter', function(self)
-            GameTooltip:SetOwner(self, 'ANCHOR_TOP')
-            GameTooltip:SetText('Toggle Skull Marker', 1, 1, 1)
-            GameTooltip:AddLine('Click to place/remove skull on current target.', 0.8, 0.8, 0.8, true)
-            GameTooltip:Show()
-        end)
-        skullBtn:SetScript('OnLeave', GameTooltip_Hide)
-
-        hooksecurefunc(header, 'Show', function() skullBtn:Show() end)
-        hooksecurefunc(header, 'Hide', function() skullBtn:Hide() end)
-
-        header._skullBtn = skullBtn
 
         -- Spell cooldown indicators (one per click spell), flanking the
         -- skull: left-click spell to the LEFT of the skull, right-click
@@ -2569,16 +2494,18 @@ TMM_CreateOrInitUI = function()
             return fr
         end
 
+        -- Positions for leftCD/rightCD (and intBtn/taunt buttons) are set by
+        -- header._layoutTopRow(), which reflows only the enabled icons with
+        -- no gaps, centred above the bars.
         local leftCD = TMM_MakeCDIndicator('TMMLeftCD', TMM_GetLeftSpell)
-        leftCD:SetPoint('RIGHT', skullBtn, 'LEFT', -4, 0)
         local rightCD = TMM_MakeCDIndicator('TMMRightCD', TMM_GetRightSpell)
-        rightCD:SetPoint('LEFT', skullBtn, 'RIGHT', 4, 0)
         header._leftCD, header._rightCD = leftCD, rightCD
 
         local function TMM_UpdateTauntCDVisible()
             local show = TMM_Get('tauntCDIndicator') ~= false
             if show then leftCD:Show(); rightCD:Show()
             else leftCD:Hide(); rightCD:Hide() end
+            if header._layoutTopRow then header._layoutTopRow() end
         end
         header._updateTauntCDVisible = TMM_UpdateTauntCDVisible
         TMM_UpdateTauntCDVisible()
@@ -2616,7 +2543,6 @@ TMM_CreateOrInitUI = function()
         local intBtn = CreateFrame('Button', 'TMMInterruptBtn', UIParent,
             'SecureActionButtonTemplate')
         intBtn:SetSize(TMM_Get('interruptSize') or 20, TMM_Get('interruptSize') or 20)
-        intBtn:SetPoint('LEFT', rightCD, 'RIGHT', 4, 0)
         intBtn:SetFrameStrata(header:GetFrameStrata())
         intBtn:SetFrameLevel(header:GetFrameLevel() + 6)
         intBtn:SetAttribute('type', 'macro')
@@ -2642,6 +2568,7 @@ TMM_CreateOrInitUI = function()
             local on = (TMM_Get('showInterruptBtn') ~= false)
                 and (TMM_GetInterruptSpell() ~= '')
             if on and header:IsShown() then intBtn:Show() else intBtn:Hide() end
+            if header._layoutTopRow then header._layoutTopRow() end
         end
         header._updateInterruptVisible = TMM_UpdateInterruptVisible
 
@@ -2704,10 +2631,9 @@ TMM_CreateOrInitUI = function()
         -- pattern as the interrupt: macrotext set ONLY from clean,
         -- combat-guarded code (header._configureTaunts via ADDON_LOADED /
         -- TMM_RebuildRoster) — never a tainted PreClick. [Paranoid]
-        local function TMM_MakeTauntBtn(nm, anchorTo, label)
+        local function TMM_MakeTauntBtn(nm, label)
             local b = CreateFrame('Button', nm, UIParent, 'SecureActionButtonTemplate')
             b:SetSize(TMM_Get('interruptSize') or 20, TMM_Get('interruptSize') or 20)
-            b:SetPoint('LEFT', anchorTo, 'RIGHT', 4, 0)
             b:SetFrameStrata(header:GetFrameStrata())
             b:SetFrameLevel(header:GetFrameLevel() + 6)
             b:SetAttribute('type', 'macro')
@@ -2734,14 +2660,15 @@ TMM_CreateOrInitUI = function()
             b:SetScript('OnLeave', GameTooltip_Hide)
             return b
         end
-        local tgtTauntBtn = TMM_MakeTauntBtn('TMMTargetTaunt', intBtn, 'Target')
-        local focusTauntBtn = TMM_MakeTauntBtn('TMMFocusTaunt', tgtTauntBtn, 'Focus')
+        local tgtTauntBtn = TMM_MakeTauntBtn('TMMTargetTaunt', 'Target')
+        local focusTauntBtn = TMM_MakeTauntBtn('TMMFocusTaunt', 'Focus')
 
         local function TMM_UpdateTauntBtns()
             local on = (TMM_Get('showTauntButtons') == true)
                 and (TMM_GetTauntSpell() ~= nil) and header:IsShown()
             if on then tgtTauntBtn:Show(); focusTauntBtn:Show()
             else tgtTauntBtn:Hide(); focusTauntBtn:Hide() end
+            if header._layoutTopRow then header._layoutTopRow() end
         end
         header._updateTauntBtns = TMM_UpdateTauntBtns
         hooksecurefunc(header, 'Show', function() TMM_UpdateTauntBtns() end)
@@ -2768,13 +2695,51 @@ TMM_CreateOrInitUI = function()
         header._tgtTauntBtn = tgtTauntBtn
         header._focusTauntBtn = focusTauntBtn
 
-        -- Multi-marker bar: 8 secure buttons (/targetmarker N). Static
-        -- macrotext set once from clean code; /targetmarker N self-toggles
-        -- so NO wrapper/PreClick is needed (the safest secure pattern).
-        -- Parented to UIParent like the skull to avoid threat-handler taint
-        -- propagation. Opt-in; default off. [Paranoid]
-        local MARKER_SZ = 18
+        -- Auto-align the top control row: only the currently-shown icons, in
+        -- fixed order, packed with no gaps and centred just above the bars.
+        -- Called by every visibility updater so the row reflows when icons
+        -- are enabled/disabled. SetPoint is not protected — safe any time.
+        header._layoutTopRow = function()
+            -- intBtn/taunt buttons are secure; moving them in combat is
+            -- protected. Skip in combat — re-run on PLAYER_REGEN_ENABLED.
+            if InCombatLockdown() then return end
+            local order = { leftCD, rightCD, intBtn, tgtTauntBtn, focusTauntBtn }
+            local shown, total = {}, 0
+            local gap = 4
+            for _, b in ipairs(order) do
+                if b and b:IsShown() then
+                    shown[#shown + 1] = b
+                    total = total + b:GetWidth()
+                end
+            end
+            if #shown > 1 then total = total + gap * (#shown - 1) end
+            local x = -total / 2
+            for _, b in ipairs(shown) do
+                b:ClearAllPoints()
+                b:SetPoint('BOTTOMLEFT', header, 'TOP', x, 2)
+                x = x + b:GetWidth() + gap
+            end
+        end
+        header._layoutTopRow()
+
+        -- Multi-marker bar: 8 secure buttons. EXACT proven skull mechanism,
+        -- per marker: a SecureHandlerWrapScript preBody (runs untainted, so
+        -- SetAttribute is legal even in combat) alternates the macrotext
+        -- between "/targetmarker N" (place) and "/targetmarker 0" (clear, the
+        -- same removal the old skull used). PostClick is tainted but only
+        -- READS an attribute + updates visuals. Parented to UIParent like
+        -- the old skull to avoid threat-handler taint propagation. [Paranoid]
+        local MARKER_SZ = TMM_Get('skullSize') or 20
         local markerBtns = {}
+        local markerWrapper = CreateFrame('Frame', nil, UIParent,
+            'SecureHandlerBaseTemplate')
+        local function TMM_SetMarkerBright(mb, bright)
+            if bright then
+                mb._icon:SetDesaturated(false); mb._icon:SetVertexColor(1, 1, 1, 1)
+            else
+                mb._icon:SetDesaturated(true); mb._icon:SetVertexColor(0.55, 0.55, 0.55, 0.7)
+            end
+        end
         for n = 1, 8 do
             local mb = CreateFrame('Button', 'TMMMarker' .. n, UIParent,
                 'SecureActionButtonTemplate')
@@ -2787,8 +2752,23 @@ TMM_CreateOrInitUI = function()
             mb:SetFrameStrata(header:GetFrameStrata())
             mb:SetFrameLevel(header:GetFrameLevel() + 6)
             mb:SetAttribute('type', 'macro')
+            -- Per-button place/clear macrotexts + state (set from clean load
+            -- code; the wrapper swaps 'macrotext' between them on each click).
+            mb:SetAttribute('mk-on', '/targetmarker ' .. n)
+            mb:SetAttribute('mk-off', '/targetmarker 0')
             mb:SetAttribute('macrotext', '/targetmarker ' .. n)
+            mb:SetAttribute('mk-state', 'off')
             mb:RegisterForClicks('AnyUp')
+            SecureHandlerWrapScript(mb, 'OnClick', markerWrapper, [[
+                local st = self:GetAttribute('mk-state') or 'off'
+                if st == 'off' then
+                    self:SetAttribute('macrotext', self:GetAttribute('mk-on'))
+                    self:SetAttribute('mk-state', 'on')
+                else
+                    self:SetAttribute('macrotext', self:GetAttribute('mk-off'))
+                    self:SetAttribute('mk-state', 'off')
+                end
+            ]])
             hooksecurefunc(mb, 'SetNormalTexture', function(self)
                 local nt = self:GetNormalTexture(); if nt then nt:SetAlpha(0) end
             end)
@@ -2799,9 +2779,28 @@ TMM_CreateOrInitUI = function()
             local hl = mb:CreateTexture(nil, 'HIGHLIGHT')
             hl:SetAllPoints()
             hl:SetColorTexture(1, 1, 1, 0.25)
+            mb._icon = ic
+            TMM_SetMarkerBright(mb, false)  -- start dim/inactive
+            -- PostClick is tainted but only READS the secure state attribute
+            -- (no SetAttribute / secure mutation) — exactly the old skull.
+            mb:HookScript('PostClick', function(self)
+                TMM_SetMarkerBright(self, self:GetAttribute('mk-state') == 'on')
+            end)
             markerBtns[n] = mb
         end
         header._markerBtns = markerBtns
+
+        -- On target change, dim every marker icon (visual only — we do NOT
+        -- SetAttribute 'mk-state' from tainted Lua; same minor state desync
+        -- the old skull accepted).
+        local markerReset = CreateFrame('Frame')
+        markerReset:RegisterEvent('PLAYER_TARGET_CHANGED')
+        markerReset:SetScript('OnEvent', function()
+            for _, mb in ipairs(markerBtns) do
+                TMM_SetMarkerBright(mb, false)
+            end
+        end)
+        header._markerReset = markerReset
 
         local function TMM_UpdateMarkerBar()
             local on = (TMM_Get('showMarkerBar') == true) and header:IsShown()
@@ -2843,10 +2842,12 @@ TMM_CreateOrInitUI = function()
                     end
                 end
 
-                -- Apply saved skull marker size
+                -- Apply saved marker button size
                 local savedSkull = TMM_Get('skullSize')
-                if self._skullBtn and savedSkull then
-                    self._skullBtn:SetSize(savedSkull, savedSkull)
+                if self._markerBtns and savedSkull then
+                    for _, mb in ipairs(self._markerBtns) do
+                        mb:SetSize(savedSkull, savedSkull)
+                    end
                 end
 
                 -- Apply saved interrupt button size
@@ -2900,6 +2901,8 @@ TMM_CreateOrInitUI = function()
                     self._tmmPendingShowState = nil
                     TMM_SetHeaderShown(show)
                 end
+                -- Reflow the top row now that moving secure frames is allowed.
+                if self._layoutTopRow then self._layoutTopRow() end
             elseif event == 'PLAYER_SPECIALIZATION_CHANGED' or event == 'TRAIT_CONFIG_UPDATED' or event == 'SPELLS_CHANGED' then
                 -- Invalidate spell cache so dropdowns show current spec/talent spells
                 TMM_InvalidateSpellCache()
@@ -2917,9 +2920,17 @@ TMM_CreateOrInitUI = function()
                 TMM_UpdateLockState()
             elseif event == 'UNIT_THREAT_SITUATION_UPDATE' then
                 TMM_HandlePullEvent(...)
+            elseif event == 'PLAYER_TARGET_CHANGED' then
+                -- Solo/world mode: rebuild so the target bar's name/icons
+                -- track the new target (threat/health track live regardless).
+                if TMM_Get('soloShowTarget') and not IsInGroup()
+                   and not InCombatLockdown() then
+                    TMM_RebuildRoster()
+                end
             end
         end)
         header:RegisterEvent('ADDON_LOADED')
+        header:RegisterEvent('PLAYER_TARGET_CHANGED')
         header:RegisterEvent('PLAYER_ENTERING_WORLD')
         header:RegisterEvent('GROUP_ROSTER_UPDATE')
         header:RegisterEvent('PLAYER_REGEN_ENABLED')
