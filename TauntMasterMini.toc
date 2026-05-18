@@ -4,7 +4,7 @@
 ## Interface: 120000
 ## Notes: Threat management for tanks. Color-coded party/raid bars with one-click taunting, class icons, role icons (Tank/Healer/DPS), spell cooldown icons, readable text, custom threat colours, skull marker sizing, hide-when-solo, raid DPS filter, per-character spells, pull alerts, and Show Self option. Updated for Midnight Pre-Patch 12.0.0.
 ## Title: TauntMaster Mini
-## Version: 6.7.0
+## Version: 7.0.0
 ## IconTexture: Interface\AddOns\TauntMasterMini\TMM.png
 ## SavedVariables: TauntMasterMiniDB
 ## SavedVariablesPerCharacter: TauntMasterMiniDBChar

@@ -2,6 +2,35 @@
 
 All notable changes to TauntMasterMini will be documented in this file.
 
+## [7.0.0] - 2026-05-18
+
+### Added
+- **Test/config mode** — `/tm test [N]` or a Layout-tab button spawns 5/10/20 dummy bars solo (randomised class/role) for laying out the frame without a group
+- **Whole-frame Scale & Opacity** sliders
+- **Bar sort options** — Group order / Tanks first / By role / By name
+- **Compact (icon-only) mode** — bars collapse to threat-coloured squares
+- **Cast-feedback flash** on bar click (toggleable)
+- **Pull-alert sound cue** (toggleable)
+- **Tabbed options window** (Layout / Display / Spells / Alerts) — fixed-size, always fits on screen
+- **Dual spell cooldown indicators** for the left- and right-click spells (event-based, no secret-value reads)
+- **Interrupt slot** — configurable interrupt cast on your target via a secure button, size slider, and an interrupt-only spell picker
+- **Raid-marker bar** — all 8 markers below the frame, each a place/remove toggle with bright/dim feedback (replaces the old skull button)
+- **Target-taunt / Focus-taunt** secure buttons
+- **Blizzard Edit Mode integration** — frame is movable in Edit Mode, restores your saved lock state on exit
+- **Solo/world mode** — show a live "target" bar (threat/health) when ungrouped
+- Auto-aligning top control row — only the enabled icons, packed with no gaps, centred above the bars
+
+### Changed
+- **Removed the standalone top-centre skull button** — raid markers now live in the bottom marker bar (default on); "Skull Marker Size" slider is now "Marker Button Size"
+- Options window restructured into tabs (no longer a single off-screen list)
+
+### Fixed
+- **Pull-alert `ADDON_ACTION_BLOCKED`** — the optional pull announce called the protected `SendChatMessage` from a tainted combat event handler; replaced with a local on-screen raid-warning banner (also aligns with Midnight addon-disarmament)
+
+### Notes
+- Keybindings were attempted but reverted — `Bindings.xml` would not register on the test client
+- Interface version unchanged (`120000`); not part of this batch
+
 ## [6.7.0] - 2026-05-05
 
 ### Added
