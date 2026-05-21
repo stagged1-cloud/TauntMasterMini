@@ -1,5 +1,5 @@
 TauntMasterMini – Threat Management Addon for Tanks
-Version 7.1.0 | Updated for Midnight 12.0
+Version 7.2.0 | Updated for Midnight 12.0
 
 ================================================================================
 
@@ -40,6 +40,8 @@ Full Spellbook Spell Picker
   • Explicit blocklist removes Fishing, Cooking, Mining, Skinning, and other
     non-combat entries
   • Class default taunt always available as a fallback
+  • Your class interrupt is always offered in every spell picker, so it can
+    be bound to left-click or right-click, not just the interrupt slot
 
 Visual Indicators
   • Threat-colored health bars:
@@ -82,6 +84,8 @@ Interrupt & Taunt Buttons
   • Optional secure Target-taunt and Focus-taunt buttons
   • Macros are set only from clean, combat-guarded code (never from a tainted
     click handler)
+  • Turning the interrupt button off greys out the Interrupt Spell picker
+    and shows a note, so you never set a spell for a hidden button
 
 Flexible Customization
   • Adjustable button dimensions (width: 50–200 px, height: 20–60 px)

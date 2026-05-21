@@ -2,6 +2,17 @@
 
 All notable changes to TauntMasterMini will be documented in this file.
 
+## [7.2.0] - 2026-05-21
+
+### Added
+- **Class interrupt always available in the Left/Right Click pickers** — your class interrupt is now offered in the **Left Click Spell** and **Right Click Spell** dropdowns, not just the Interrupt Spell picker, so it can be bound to a bar click even when it is not on an action bar. Sourced per class from the class kit and de-duplicated against the spellbook scan — the same fallback pattern already used for the class taunt
+
+### Changed
+- **Interrupt Spell picker greys out when the interrupt button is off** — unticking **Show Interrupt Button** (Display tab) now greys the Interrupt Spell row on the Spells tab (button, icon and label) and shows a note explaining it is disabled; a greyed picker cannot be opened. Re-ticking restores it. The state also reflects correctly after **Reset Defaults** and on login
+
+### Notes
+- Both changes are display/config-only (spell *names* fed to a `/cast` macro built out of combat). No secret-value read, no taint, no secure-frame mutation — no §0a concern
+
 ## [7.1.0] - 2026-05-19
 
 ### Added

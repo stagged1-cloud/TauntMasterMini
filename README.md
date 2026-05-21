@@ -1,13 +1,16 @@
 # TauntMasterMini
 
-**Version 7.1.0** | Updated for World of Warcraft: Midnight (12.0)
+**Version 7.2.0** | Updated for World of Warcraft: Midnight (12.0)
 
 A lightweight threat utility for tanks that shows live threat bars, one-click spell casting, full spellbook spell selection, cooldown overlays, and smart group targeting in a compact, movable frame.
 
-### What’s new in 7.1.0
+### What’s new in 7.2.0
+- **Class interrupt in the Left/Right Click pickers** — your class interrupt now appears in the **Left Click Spell** and **Right Click Spell** dropdowns too, so you can bind it to a bar click; previously it was only in the Interrupt picker
+- **Interrupt Spell picker greys out** when **Show Interrupt Button** is turned off, with a note explaining why — no more setting a spell for a hidden button
+
+### Earlier — 7.1.0
 - **Smart per-class starter kit** — a fresh character or “Reset Defaults” auto-fills left = class taunt, right = a useful class spell, interrupt = the class interrupt, **validated against the spells the character actually knows** (spellbook + active talents)
 - **Not-in-tanking-spec notice** — a one-time chat message and an Options banner when you’re not in a tank spec
-- Fixed cold-login issues (spells/icons inert until `/reload`), “Reset Defaults” cross-class contamination, “(None - Clear)” not sticking, solo-target icon squares, and test-mode bar sorting
 - **Removed the out-of-range indicator** — no longer achievable under Midnight (12.0) addon-disarmament (range is now an opaque/secret value addons may not read); see CHANGELOG
 
 ### Core features
@@ -97,7 +100,7 @@ Access via `/tm` or left-click the minimap button. The window is a fixed-size ta
 | **Marker Button Size** | Size of the raid-marker buttons (12–40 px) |
 | **Interrupt Button Size** | Size of the interrupt / taunt buttons (12–40 px) |
 
-**Spells tab** — Left-click spell, Right-click spell, and Interrupt spell, each picked from a filtered scan of your full spellbook (tabs, flyouts, talents, action bars).
+**Spells tab** — Left-click spell, Right-click spell, and Interrupt spell, each picked from a filtered scan of your full spellbook (tabs, flyouts, talents, action bars). Your class interrupt is always offered in all three pickers. When **Show Interrupt Button** is off, the Interrupt Spell picker is greyed out with a note and cannot be opened.
 
 **Alerts tab**
 
@@ -154,6 +157,10 @@ Modernized and rewritten
 ---
 
 ## Changelog
+
+### Version 7.2.0
+- Class interrupt now also available in the Left Click and Right Click spell pickers (previously interrupt-only)
+- Interrupt Spell picker greys out with an explanatory note when "Show Interrupt Button" is disabled
 
 ### Version 7.1.0
 - Smart per-class starter kit (taunt / useful spell / interrupt), validated against the character’s known spells (spellbook + active talents)

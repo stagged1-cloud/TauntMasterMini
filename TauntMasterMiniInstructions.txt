@@ -1,5 +1,5 @@
 ================================================================================
-              TauntMasterMini v7.1.0 - Instructions & Reference
+              TauntMasterMini v7.2.0 - Instructions & Reference
               Updated for WoW Midnight Pre-Patch 12.0.0
 ================================================================================
 
@@ -90,9 +90,12 @@ Layout / Display / Spells / Alerts.
   Interrupt Button Size  Size of interrupt/taunt buttons (12-40 px)
 
   --- Spells ---
-  Left Click Spell ..... Choose from your full spellbook
-  Right Click Spell .... Choose from your full spellbook
-  Interrupt Spell ...... Interrupt-only spell picker
+  Left Click Spell ..... Choose from your full spellbook (your class
+                         interrupt is always offered here too)
+  Right Click Spell .... Choose from your full spellbook (class interrupt
+                         offered here too)
+  Interrupt Spell ...... Interrupt-only spell picker; greys out with a
+                         note when "Show Interrupt Button" is off
 
   --- Alerts ---
   Alert when non-tank pulls ..... Flash + local message (on by default)
@@ -109,7 +112,12 @@ The spell dropdown scans your entire spellbook:
   - Flyouts (Blessings, Portals, etc.)
   - Active talent tree spells
   - Action bar spells (supplementary)
-  - Class default taunt as fallback
+  - Class default taunt and your class interrupt always offered as fallbacks
+
+The Left Click and Right Click pickers always include your class interrupt,
+so you can bind the interrupt to a bar click. When "Show Interrupt Button"
+(Display tab) is off, the Interrupt Spell picker is greyed out and shows a
+note — a greyed picker cannot be opened.
 
 Only combat-relevant spells appear: must be harmful, helpful, or have range
 (catches dual-purpose spells like Death Coil), non-passive, and not on the

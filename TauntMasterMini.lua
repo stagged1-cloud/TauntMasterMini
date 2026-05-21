@@ -657,6 +657,20 @@ TMM_GetAvailableSpells = function()
         addSpell(tauntSpell)
     end
 
+    ---------------------------------------------------------------------------
+    -- METHOD 5: Always include the class interrupt(s) as a fallback, so the
+    -- Left/Right Click pickers can offer the interrupt even when it is not on
+    -- an action bar yet (same rationale as the taunt fallback above). Pulled
+    -- from TMM_CLASS_KIT so it is correct per class. Spell names only -- no
+    -- §0a secret-value concern. addSpell() de-dupes if already known.
+    ---------------------------------------------------------------------------
+    local classKit = TMM_GetClassKit()
+    if classKit and classKit.interrupt then
+        for _, intName in ipairs(classKit.interrupt) do
+            addSpell(intName)
+        end
+    end
+
     table.sort(spells)
     cachedSpells = spells
     cachedSpellsTime = GetTime()
@@ -2235,6 +2249,7 @@ TMM_CreateOrInitUI = function()
             button:SetSize(200, 24)
             button.getterFunction = get
             button._spellIcon = iconTex
+            button._spellLabel = lbl
             button.setterFunction = function(value)
                 set(value)
                 button:refreshText()
@@ -2415,6 +2430,48 @@ TMM_CreateOrInitUI = function()
             return TMM_INTERRUPTS[n] == true
         end
 
+        -- Explanatory note shown under the Interrupt Spell picker when the
+        -- interrupt button itself is turned off (Display tab). Pure UI state
+        -- -- no secure frame, no taint, no combat-data concern.
+        local intDisabledMsg = curPage:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+        intDisabledMsg:SetPoint('TOPLEFT', 16, curPage._y)
+        intDisabledMsg:SetPoint('TOPRIGHT', -12, curPage._y)
+        intDisabledMsg:SetJustifyH('LEFT')
+        intDisabledMsg:SetText('|cFFFF4040Disabled —|r |cFFFFD200turn on "Show '
+            .. 'Interrupt Button" on the Display tab to set an interrupt spell.|r')
+        intDisabledMsg:Hide()
+        f._interruptDisabledMsg = intDisabledMsg
+        curPage._y = curPage._y - 26
+
+        -- Greys out the Interrupt Spell picker (button + icon + label) and
+        -- shows the note above when the interrupt button is disabled. A
+        -- disabled UIPanelButton does not fire OnClick, so the picker cannot
+        -- be opened while greyed. Driven by the "Show Interrupt Button"
+        -- checkbox, Reset Defaults, and the ADDON_LOADED panel refresh.
+        function f:_updateInterruptSpellEnabled()
+            local enabled = (TMM_Get('showInterruptBtn') ~= false)
+            local btn = self._interruptSpellBtn
+            if btn then
+                if enabled then
+                    btn:Enable()
+                    if btn._spellIcon  then btn._spellIcon:SetDesaturated(false) end
+                    if btn._spellLabel then btn._spellLabel:SetTextColor(1, 0.82, 0) end
+                else
+                    btn:Disable()
+                    if btn._spellIcon  then btn._spellIcon:SetDesaturated(true) end
+                    if btn._spellLabel then btn._spellLabel:SetTextColor(0.5, 0.5, 0.5) end
+                end
+            end
+            if self._interruptDisabledMsg then
+                if enabled then
+                    self._interruptDisabledMsg:Hide()
+                else
+                    self._interruptDisabledMsg:Show()
+                end
+            end
+        end
+        f:_updateInterruptSpellEnabled()
+
         curPage = pageDisplay
         AddCheck('Show Minimap Icon', function()
             return not (TMM_MinimapSettings().hide)
@@ -2466,6 +2523,10 @@ TMM_CreateOrInitUI = function()
             TMM_Set('showInterruptBtn', val)
             if TauntMasterMini_Header and TauntMasterMini_Header._updateInterruptVisible then
                 TauntMasterMini_Header._updateInterruptVisible()
+            end
+            -- Grey/un-grey the Interrupt Spell picker on the Spells tab.
+            if f._updateInterruptSpellEnabled then
+                f:_updateInterruptSpellEnabled()
             end
         end)
 
@@ -2633,6 +2694,9 @@ TMM_CreateOrInitUI = function()
                     end
                     for _, s in ipairs(TMMOptionsMenu._tmmSliders or {}) do
                         if s._tmmGetter then s:SetValue(s._tmmGetter()) end
+                    end
+                    if TMMOptionsMenu._updateInterruptSpellEnabled then
+                        TMMOptionsMenu:_updateInterruptSpellEnabled()
                     end
                 end
                 if not InCombatLockdown() then
@@ -3175,6 +3239,9 @@ TMM_CreateOrInitUI = function()
                     end
                     for _, s in ipairs(TMMOptionsMenu._tmmSliders or {}) do
                         if s._tmmGetter then s:SetValue(s._tmmGetter()) end
+                    end
+                    if TMMOptionsMenu._updateInterruptSpellEnabled then
+                        TMMOptionsMenu:_updateInterruptSpellEnabled()
                     end
                 end
 

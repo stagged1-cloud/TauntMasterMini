@@ -1,11 +1,52 @@
 ================================================================================
                 TauntMasterMini - MIDNIGHT PRE-PATCH UPDATE
-                              Version 7.0.0
+                              Version 7.2.0
            Updated for WoW Midnight Pre-Expansion Patch 12.0.0
 ================================================================================
 
 
-WHAT'S NEW IN 7.0.0:
+WHAT'S NEW IN 7.2.0:
+---------------------
+1. CLASS INTERRUPT IN THE LEFT/RIGHT CLICK PICKERS
+   Your class interrupt is now offered in the Left Click and Right Click
+   spell dropdowns too, not just the Interrupt picker — so you can bind the
+   interrupt to a bar click even if it is not on an action bar.  Sourced
+   per class and de-duplicated against the spellbook scan, the same
+   fallback pattern already used for the class taunt.
+
+2. INTERRUPT SPELL PICKER GREYS OUT
+   When "Show Interrupt Button" (Display tab) is unticked, the Interrupt
+   Spell row on the Spells tab greys out (button, icon and label) and shows
+   a note explaining it is disabled.  A greyed picker cannot be opened.
+   Re-ticking restores it; the state is also correct after Reset Defaults
+   and on login.
+
+
+WHAT WAS NEW IN 7.1.0:
+-----------------------
+1. SMART PER-CLASS STARTER KIT
+   A fresh character or "Reset Defaults" now auto-fills left = class taunt,
+   right = a useful class spell, interrupt = the class interrupt — each
+   validated against the spells the character actually knows (spellbook +
+   active talents).
+
+2. NOT-IN-TANKING-SPEC NOTICE
+   A one-time chat message on login / spec change, plus a banner on the
+   Options > Spells tab, when the current spec is not a tank spec.
+
+3. OUT-OF-RANGE INDICATOR REMOVED
+   The red out-of-range tint is gone — it is not achievable under Midnight
+   (12.0) addon-disarmament (spell range became an opaque "secret value"
+   addons may not read).  /tm range is kept as a diagnostic.
+
+4. FIXES
+   Cold-login spells/icons inert until /reload; sticky "?" icons; Options
+   spell icons not refreshing; "Reset Defaults" cross-class contamination;
+   "(None - Clear)" not sticking; GUI buttons dead under
+   ActionButtonUseKeyDown; aggro not shown with Class colours enabled.
+
+
+WHAT WAS NEW IN 7.0.0:
 ---------------------
 1. TABBED OPTIONS WINDOW
    Options are now a fixed-size tabbed panel (Layout / Display / Spells /
@@ -167,7 +208,6 @@ FULL FEATURE LIST (7.0.0):
 - One-click casting: left-click and right-click configurable spells
 - Full spellbook spell picker with combat-relevance filtering
 - Dual event-based spell cooldown indicators
-- Out-of-range red tint indicator
 - Tabbed options (Layout / Display / Spells / Alerts)
 - Frame Scale & Opacity sliders
 - Bar Sort (group / tanks-first / role / name) and Compact icon-only mode
@@ -235,7 +275,6 @@ TESTING AFTER UPDATE:
    - Bars appear with class-colored names and role icons
    - Left-click a bar → casts your primary spell on their target
    - Right-click → secondary spell
-   - Out-of-range targets show a red tint
    - Cooldown indicators update after you cast
 
 7. Test pull alerts:
