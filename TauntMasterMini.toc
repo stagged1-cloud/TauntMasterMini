@@ -1,10 +1,10 @@
-## Author: Don Thompson (Haruspex)
-## Designer: Don Thompson (Haruspex)
-## Credits: Based on TauntMaster2 by Tartarusspawn (https://www.curseforge.com/members/_forgeuser2432659/projects). Modernized and rewritten by Don Thompson (Haruspex). For Scouse.
+## Author: Anonymous
+## Designer: Anonymous
+## Credits: Based on TauntMaster2 by Tartarusspawn (https://www.curseforge.com/members/_forgeuser2432659/projects). Modernized and rewritten.
 ## Interface: 120000
 ## Notes: Threat management for tanks. Color-coded party/raid bars with one-click taunting, class & role icons (Tank/Healer/DPS), dual spell-cooldown indicators, interrupt slot, target/focus taunt buttons, raid-marker bar, tabbed options, frame scale/opacity, bar sort, compact mode, solo target bar, hide-when-solo, raid DPS filter, per-character spells, pull alerts, and Show Self. Updated for Midnight Pre-Patch 12.0.0.
 ## Title: TauntMaster Mini
-## Version: 7.0.0
+## Version: 7.1.0
 ## IconTexture: Interface\AddOns\TauntMasterMini\TMM.png
 ## SavedVariables: TauntMasterMiniDB
 ## SavedVariablesPerCharacter: TauntMasterMiniDBChar

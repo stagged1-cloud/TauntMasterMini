@@ -1,4 +1,4 @@
--- Author      : Don Thompson (Haruspex)
+-- Author      : Anonymous
 -- Create Date : 2025
 -- Global Variables for TauntMasterMini
 

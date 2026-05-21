@@ -1,5 +1,5 @@
 TauntMasterMini – Threat Management Addon for Tanks
-Version 7.0.0 | Updated for Midnight 12.0
+Version 7.1.0 | Updated for Midnight 12.0
 
 ================================================================================
 
@@ -47,8 +47,6 @@ Visual Indicators
       Red (tanking securely)
   • Dual cooldown overlays: split clock-sweep display — left half for
     left-click spell, right half for right-click spell
-  • Out-of-range indicator: red tint overlay appears when the spell target
-    is beyond range
   • Role icons on every player bar: Tank / Healer / DPS shown via the LFG
     role texture sheet; falls back to DPS when role is unassigned and
     infers Tank/Healer from spec where possible
@@ -136,8 +134,6 @@ KEY FEATURES AT A GLANCE
     bars; filters out professions and non-combat spells
   ✓ Dual cooldown overlays — split clock-sweep display shows both left-click
     and right-click spell cooldowns
-  ✓ Out-of-range indicator — red tint overlay when the target is beyond
-    spell range
   ✓ Raid-marker bar — all 8 markers below the frame, each a place/remove
     toggle; taint-immune secure implementation
   ✓ Interrupt slot + Target/Focus taunt — optional secure buttons with
@@ -176,6 +172,6 @@ REQUIREMENTS
 CREDITS
 -------
 Based on TauntMaster2 by Tartarusspawn (CurseForge).
-Modernized and rewritten by Don Thompson (Haruspex).
+Modernized and rewritten.
 
 For Scouse.

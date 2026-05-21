@@ -1,24 +1,21 @@
 # TauntMasterMini
 
-**Version 7.0.0** | Updated for World of Warcraft: Midnight (12.0)
+**Version 7.1.0** | Updated for World of Warcraft: Midnight (12.0)
 
-A lightweight threat utility for tanks that shows live threat bars, one-click spell casting, full spellbook spell selection, cooldown overlays, out-of-range warnings, and smart group targeting in a compact, movable frame.
+A lightweight threat utility for tanks that shows live threat bars, one-click spell casting, full spellbook spell selection, cooldown overlays, and smart group targeting in a compact, movable frame.
 
-### What’s new in 7.0.0
-- **Tabbed options window** (Layout / Display / Spells / Alerts) — always fits on screen
-- **Test/config mode** — lay out the frame solo with `/tm test` or the Layout tab
-- **Scale & Opacity** sliders; **bar sort** (group / tanks-first / role / name); **compact icon-only mode**
-- **Dual cooldown indicators**, an **Interrupt slot**, and **Target/Focus taunt** buttons
-- **Raid-marker bar** (all 8 markers, place/remove toggle) — **replaces the old top skull button**
-- **Cast-flash**, **pull-alert sound**, **Edit Mode integration**, and **Solo/world target bar**
-- Fixed a pull-alert `ADDON_ACTION_BLOCKED` (automated combat chat replaced with a local raid-warning banner)
+### What’s new in 7.1.0
+- **Smart per-class starter kit** — a fresh character or “Reset Defaults” auto-fills left = class taunt, right = a useful class spell, interrupt = the class interrupt, **validated against the spells the character actually knows** (spellbook + active talents)
+- **Not-in-tanking-spec notice** — a one-time chat message and an Options banner when you’re not in a tank spec
+- Fixed cold-login issues (spells/icons inert until `/reload`), “Reset Defaults” cross-class contamination, “(None - Clear)” not sticking, solo-target icon squares, and test-mode bar sorting
+- **Removed the out-of-range indicator** — no longer achievable under Midnight (12.0) addon-disarmament (range is now an opaque/secret value addons may not read); see CHANGELOG
 
 ### Core features
 - Real-time color-coded threat bars for party/raid up to 40 players
 - Left/right click casts with automatic enemy/friendly targeting
 - Full spellbook scan including tabs, flyouts, talents, and action bars
 - Smart filter blocks profession/non-combat spells like Fishing and Mining
-- Dual cooldown overlays and red out-of-range tint
+- Dual cooldown overlays
 - Default tank taunts for all six tank specs plus any spell assignment
 - Movable, lockable frame with per-character position save and minimap integration
 - Slash commands: `/tm` or `/TauntMasterMini`
@@ -57,9 +54,8 @@ A lightweight threat utility for tanks that shows live threat bars, one-click sp
 1. **Join a group** — The addon automatically creates a bar for each party/raid member
 2. **Monitor threat** — Watch health bar colors change in real-time as threat shifts
 3. **Click to cast** — Left-click a bar to cast your primary spell; right-click for your secondary spell
-4. **Check range** — A red tint on a bar means the target is out of range
-5. **Watch cooldowns** — The dark clock-sweep on each bar shows when your spells are ready
-6. **Customize** — Type `/tm` to adjust sizes, spells, layout, and display options
+4. **Watch cooldowns** — The dark clock-sweep on each bar shows when your spells are ready
+5. **Customize** — Type `/tm` to adjust sizes, spells, layout, and display options
 
 ---
 
@@ -151,13 +147,19 @@ Enable Lua error reporting for detailed diagnostics:
 
 Based on **TauntMaster2** by **Tartarusspawn** ([CurseForge](https://www.curseforge.com/wow/addons/taunt-master-2))
 
-Modernized and rewritten by **Don Thompson (Haruspex)**
+Modernized and rewritten
 
 *For Scouse.*
 
 ---
 
 ## Changelog
+
+### Version 7.1.0
+- Smart per-class starter kit (taunt / useful spell / interrupt), validated against the character’s known spells (spellbook + active talents)
+- Not-in-tanking-spec notice (one-time chat message + Options banner)
+- Fixed: cold-login spells/icons inert until `/reload`; sticky “?” icons; Options spell icons not refreshing; “Reset Defaults” cross-class contamination; “(None - Clear)” not sticking; right-click duplicating the taunt; solo-target NPC class/role squares; test-mode bar sorting; options window too narrow
+- Removed the out-of-range indicator — not achievable under Midnight (12.0) addon-disarmament (range is now an opaque/secret value); `/tm range` kept as a diagnostic
 
 ### Version 7.0.0
 - Tabbed options window (Layout / Display / Spells / Alerts) — fixed-size, always fits on screen
@@ -240,4 +242,4 @@ Modernized and rewritten by **Don Thompson (Haruspex)**
 
 ## License
 
-This addon is a complete rewrite based on the original TauntMaster2 by Tartarusspawn. All new code © 2025–2026 Don Thompson.
+This addon is a complete rewrite based on the original TauntMaster2 by Tartarusspawn. All new code © 2025–2026.

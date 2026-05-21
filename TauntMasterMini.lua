@@ -1,7 +1,7 @@
 -- TauntMasterMini - Modernized version
--- Author: Don Thompson (Haruspex) - 2025-2026
+-- Author: Anonymous - 2025-2026
 -- Updated for WoW Midnight Pre-Expansion Patch 12.0.0 (Build 65512) - January 2026
--- v7.0.0 - May 2026
+-- v7.1.0 - May 2026
 -- A threat management addon for tanks. For Scouse.
 
 local addonName = ...
@@ -100,6 +100,9 @@ local TMM_SetLocked
 local TMM_UpdateLockState
 local TMM_ConfigureClickAction
 local TMM_IsPlayer
+local TMM_GetAvailableSpells  -- defined later; forward-declared so the
+                              -- class kit in TMM_EnsureDefaults can
+                              -- validate defaults against known spells.
 function TauntMasterMini_ConfigureSpells() end
 
 
@@ -116,6 +119,71 @@ local function TMM_GetTauntSpell()
     return map[class]
 end
 
+-- Smart per-class starter kit used by TMM_EnsureDefaults (fresh character
+-- AND after "Reset Defaults"). left = taunt (always), right = a useful
+-- class spell, interrupt = the class interrupt. Only applied when the
+-- value is empty/nil, so it never overwrites a user's saved choice on a
+-- normal login — only a brand-new char or an actual Reset gets these.
+-- Spell *names* only (resolved by the secure /cast macro); these are not
+-- Midnight "secret values", so no §0a concern.
+-- utility/interrupt are PRIORITY LISTS: TMM_EnsureDefaults picks the
+-- first entry the character actually knows (validated against the
+-- spellbook scan). This avoids defaulting to a talent the char may not
+-- have taken (e.g. Druid "Mighty Bash"), which previously fell back to
+-- the taunt and made right-click duplicate left-click.
+local TMM_CLASS_KIT = {
+    WARRIOR     = { taunt = 'Taunt',             utility = { 'Shield Slam', 'Revenge', 'Thunder Clap', 'Heroic Throw' },              interrupt = { 'Pummel' } },
+    PALADIN     = { taunt = 'Hand of Reckoning', utility = { "Avenger's Shield", 'Judgment', 'Hammer of the Righteous', 'Blessed Hammer' }, interrupt = { 'Rebuke' } },
+    DEATHKNIGHT = { taunt = 'Dark Command',      utility = { 'Death Strike', 'Heart Strike', 'Marrowrend', 'Death Grip' },             interrupt = { 'Mind Freeze' } },
+    DRUID       = { taunt = 'Growl',             utility = { 'Mangle', 'Thrash', 'Swipe', 'Maul' },                                    interrupt = { 'Skull Bash' } },
+    MONK        = { taunt = 'Provoke',           utility = { 'Keg Smash', 'Blackout Kick', 'Rising Sun Kick', 'Tiger Palm' },          interrupt = { 'Spear Hand Strike' } },
+    DEMONHUNTER = { taunt = 'Torment',           utility = { 'Fracture', 'Shear', 'Throw Glaive', 'Immolation Aura' },                 interrupt = { 'Disrupt' } },
+}
+
+local function TMM_GetClassKit()
+    return TMM_CLASS_KIT[select(2, UnitClass('player'))]
+end
+
+-- Tank-spec detection + notice. Returns true (tank), false (not tank),
+-- or nil (spec not known yet — e.g. very early login; caller must NOT
+-- treat nil as "not tank"). Spec/role are NOT Midnight secret values,
+-- so no §0a concern; not combat-protected, safe any time.
+local function TMM_IsTankSpec()
+    if not GetSpecialization then return nil end
+    local idx = GetSpecialization()
+    if not idx then return nil end
+    local role = GetSpecializationRole and GetSpecializationRole(idx)
+    if not role then return nil end
+    return role == 'TANK'
+end
+
+-- Tracks the last *notified* state so the chat line prints only on a
+-- real transition (login into non-tank, or tank -> non-tank), never
+-- every event. nil = nothing notified yet this session.
+local TMM_tankNoticeState = nil
+
+local function TMM_UpdateTankSpecNotice()
+    local isTank = TMM_IsTankSpec()
+    if isTank == nil then return end  -- spec unknown yet; try again later
+    if isTank ~= TMM_tankNoticeState then
+        if not isTank then
+            print('|cFF00FFFFTauntMasterMini:|r |cFFFFFF00You are not in a '
+                .. 'tanking spec — taunt/threat features are limited until '
+                .. 'you switch to your tank spec.|r')
+        end
+        TMM_tankNoticeState = isTank
+    end
+    -- Options > Spells banner mirrors the live state whenever the panel
+    -- exists (guarded; created later in TMM_CreateOrInitUI).
+    if TMMOptionsMenu and TMMOptionsMenu._tankBanner then
+        if isTank then
+            TMMOptionsMenu._tankBanner:Hide()
+        else
+            TMMOptionsMenu._tankBanner:Show()
+        end
+    end
+end
+
 local function TMM_EnsureDefaults()
     -- Account-wide DB holds minimap settings only; everything else is per-char.
     TauntMasterMiniDB = TauntMasterMiniDB or {}
@@ -125,10 +193,31 @@ local function TMM_EnsureDefaults()
     -- apply DEFAULTS for brand-new characters.
     TauntMasterMiniDBChar = TauntMasterMiniDBChar or {}
 
+    -- Class-specific spell choices must NEVER be migrated from the shared
+    -- account-wide DB. Doing so cross-contaminates classes (a Death
+    -- Knight's Dark Command/Death Grip leaking onto a Demon Hunter) and
+    -- survives "Reset Defaults", because Reset only nils the per-char DB
+    -- while the stale account-wide copy re-injects on the next
+    -- EnsureDefaults. These keys are per-character only; the class kit
+    -- below is the sole source of their defaults.
+    local PERCHAR_ONLY = {
+        leftClickSpell = true, rightClickSpell = true, interruptSpell = true,
+    }
+    -- One-time scrub of legacy account-wide copies so they can never leak
+    -- onto another character again. Idempotent; the current code only ever
+    -- writes these per-character (TMM_Set), so nothing legitimate is lost.
+    for k in pairs(PERCHAR_ONLY) do TauntMasterMiniDB[k] = nil end
+
     for key, value in pairs(DEFAULTS) do
-        if key ~= 'minimap' then  -- minimap stays account-wide
+        -- minimap stays account-wide. PERCHAR_ONLY class-spell keys are
+        -- deliberately left ABSENT (nil) here, never forced to '': the
+        -- class kit below is their only default source, applied solely
+        -- when the key is nil. That makes an explicit "(None - Clear)"
+        -- (which writes '') survive EnsureDefaults instead of being
+        -- re-filled by the kit on the next rebuild.
+        if key ~= 'minimap' and not PERCHAR_ONLY[key] then
             if TauntMasterMiniDBChar[key] == nil then
-                -- Try migrating from old account-wide value first
+                -- Try migrating from old account-wide value first.
                 if TauntMasterMiniDB[key] ~= nil then
                     if type(TauntMasterMiniDB[key]) == 'table' then
                         TauntMasterMiniDBChar[key] = CopyTable and CopyTable(TauntMasterMiniDB[key]) or {}
@@ -154,13 +243,62 @@ local function TMM_EnsureDefaults()
         TauntMasterMiniDBChar.hideTM = false
     end
 
-    local defaultTaunt = TMM_GetTauntSpell()
-    if defaultTaunt then
-        if not TauntMasterMiniDBChar.leftClickSpell or TauntMasterMiniDBChar.leftClickSpell == '' then
-            TauntMasterMiniDBChar.leftClickSpell = defaultTaunt
+    -- Smart class kit: left = taunt, right = useful class spell, interrupt
+    -- = class interrupt. Applied ONLY when the key is nil (never set on
+    -- this character / just Reset). A value of '' means the user
+    -- explicitly chose "(None - Clear)" and MUST be preserved -- so the
+    -- nil-vs-'' distinction is load-bearing here; do not loosen it back
+    -- to `== ''` or clears will silently re-populate. A real saved spell
+    -- (non-nil, non-'') is likewise never overwritten on a normal login.
+    -- Only do the (relatively costly) known-spell scan when at least one
+    -- slot is actually unset — the common path (everything configured)
+    -- skips it entirely.
+    local needFill = TauntMasterMiniDBChar.leftClickSpell == nil
+                  or TauntMasterMiniDBChar.rightClickSpell == nil
+                  or TauntMasterMiniDBChar.interruptSpell == nil
+    if needFill then
+        local kit = TMM_GetClassKit()
+        -- Build the set of spells THIS character+spec actually knows,
+        -- from the same source the spell dropdown uses (spellbook +
+        -- ACTIVE talents). A kit default is applied only if the
+        -- character truly has it — so e.g. a non-Guardian Druid does
+        -- not get "Growl", and an untalented "Mighty Bash" is never
+        -- written (no more "?" for a spell the char cannot cast).
+        -- At cold login this list is empty; the slot simply stays nil
+        -- and is filled on the SPELLS_CHANGED rebuild once spell data
+        -- is available (see the SPELLS_CHANGED handler). Spec changes
+        -- re-run this and self-heal the kit for the new spec.
+        local known = {}
+        for _, n in ipairs(TMM_GetAvailableSpells() or {}) do
+            known[n] = true
         end
-        if not TauntMasterMiniDBChar.rightClickSpell or TauntMasterMiniDBChar.rightClickSpell == '' then
-            TauntMasterMiniDBChar.rightClickSpell = defaultTaunt
+        -- pick: accepts a single spell name OR a priority list; returns
+        -- the first entry the character actually knows, else nil.
+        local function pick(cand)
+            if type(cand) == 'table' then
+                for _, n in ipairs(cand) do
+                    if known[n] then return n end
+                end
+                return nil
+            end
+            if cand and known[cand] then return cand end
+            return nil
+        end
+        local taunt = pick(TMM_GetTauntSpell())
+        local left  = pick(kit and kit.taunt) or taunt
+        -- Right-click intentionally does NOT fall back to the taunt:
+        -- duplicating left-click as right-click (the "right = Growl"
+        -- report) is worse than leaving it unset so the user can choose.
+        local right = pick(kit and kit.utility)
+        local intr  = pick(kit and kit.interrupt)
+        if left  and TauntMasterMiniDBChar.leftClickSpell  == nil then
+            TauntMasterMiniDBChar.leftClickSpell = left
+        end
+        if right and TauntMasterMiniDBChar.rightClickSpell == nil then
+            TauntMasterMiniDBChar.rightClickSpell = right
+        end
+        if intr  and TauntMasterMiniDBChar.interruptSpell  == nil then
+            TauntMasterMiniDBChar.interruptSpell = intr
         end
     end
 end
@@ -227,6 +365,40 @@ local function TMM_SortUnits(units)
     for i, e in ipairs(dec) do units[i] = e.tok end
 end
 
+-- Test-mode sort. Real bars sort by unit token (above), but every test
+-- bar uses the 'player' token, so sorting must operate on each bar's
+-- randomised test profile {class, role} instead. Same mode rules as
+-- TMM_SortUnits so "Sort: Tanks first" / "By role" behave identically.
+local function TMM_SortTestProfiles(profiles)
+    local mode = TMM_Get('sortMode') or 'group'
+    if mode == 'group' or #profiles < 2 then return end
+    local dec = {}
+    for i, e in ipairs(profiles) do dec[i] = { e = e, idx = i } end
+    if mode == 'name' then
+        for _, d in ipairs(dec) do
+            d.key = (d.e.class or '\255'):lower()
+        end
+        table.sort(dec, function(a, b)
+            if a.key ~= b.key then return a.key < b.key end
+            return a.idx < b.idx
+        end)
+    else  -- 'tank' or 'role'
+        for _, d in ipairs(dec) do
+            local r = d.e.role or 'NONE'
+            if mode == 'tank' then
+                d.rank = (r == 'TANK') and 1 or 2
+            else
+                d.rank = TMM_ROLE_RANK[r] or 4
+            end
+        end
+        table.sort(dec, function(a, b)
+            if a.rank ~= b.rank then return a.rank < b.rank end
+            return a.idx < b.idx
+        end)
+    end
+    for i, d in ipairs(dec) do profiles[i] = d.e end
+end
+
 local function TMM_GetLeftSpell()
     return TMM_Get('leftClickSpell') or ''
 end
@@ -253,7 +425,7 @@ local function TMM_InvalidateSpellCache()
     cachedSpellsTime = 0
 end
 
-local function TMM_GetAvailableSpells()
+TMM_GetAvailableSpells = function()
     -- Return cache if fresh (within 2 seconds)
     if cachedSpells and (GetTime() - cachedSpellsTime) < 2 then
         return cachedSpells
@@ -697,6 +869,58 @@ SlashCmdList['TAUNTMASTERMINI'] = function(msg)
         TMM_SetLocked(false)
     elseif msg == 'debug' then
         if TMM_DebugDump then TMM_DebugDump() end
+    elseif msg == 'range' then
+        print('|cFF00FFFFTauntMasterMini Range Diagnostic|r')
+        print('  C_Spell.IsSpellInRange present:',
+              (C_Spell and C_Spell.IsSpellInRange) and 'YES' or '|cFFFF0000NO|r')
+        print('  legacy IsSpellInRange present:',
+              IsSpellInRange and 'YES' or '|cFFFF0000NO|r')
+        local function probe(label, spell, unit)
+            if not spell or spell == '' then
+                print('  ' .. label .. ': |cFFFF0000(no spell configured)|r'); return
+            end
+            if not UnitExists(unit) then
+                print('  ' .. label .. ' [' .. spell .. ' -> ' .. unit
+                      .. ']: |cFFFFFF00unit does not exist|r'); return
+            end
+            local raw, rawType, ok = nil, 'nil', pcall(function()
+                if C_Spell and C_Spell.IsSpellInRange then
+                    raw = C_Spell.IsSpellInRange(spell, unit)
+                elseif IsSpellInRange then
+                    raw = IsSpellInRange(spell, unit)
+                end
+                rawType = type(raw)
+            end)
+            local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spell)
+            print(string.format(
+                '  %s [%s -> %s]: result=|cFFFFFF00%s|r type=%s pcall_ok=%s spellID=%s',
+                label, spell, unit, tostring(raw), rawType, tostring(ok),
+                tostring(info and info.spellID or 'nil')))
+        end
+        local l = TMM_GetLeftSpell(); if l == '' then l = TMM_GetTauntSpell() end
+        local r = TMM_GetRightSpell()
+        print('--- vs your TARGET (solo bar case) ---')
+        probe('left ', l, 'target')
+        probe('right', r, 'target')
+        print('--- vs TARGET-OF-TARGET (group bar case) ---')
+        probe('left ', l, 'targettarget')
+        print('--- UnitInRange (DISARMED: returns SECRET booleans here) ---')
+        for _, u in ipairs({ 'player', 'party1', 'party2', 'party3', 'party4' }) do
+            if UnitExists(u) then
+                -- tostring() on a secret boolean can itself error, so
+                -- pcall it and only report whether it was readable.
+                local ok, s = pcall(function()
+                    local inR = UnitInRange(u)
+                    return tostring(inR)
+                end)
+                print(string.format('  %s (%s): %s',
+                    u, UnitName(u) or '?',
+                    ok and ('readable=' .. s)
+                       or '|cFFFF0000SECRET / not readable by addons|r'))
+            end
+        end
+        print('|cFF888888Range is opaque/secret under Midnight '
+              .. 'addon-disarmament — the indicator is not achievable.|r')
     elseif msg == 'spells' then
         print('|cFF00FFFFTauntMasterMini Spell Diagnostic|r')
         print('--- API Checks ---')
@@ -963,6 +1187,45 @@ TMM_IsPlayer = function(unit)
     return playerGUID and unitGUID and (playerGUID == unitGUID)
 end
 
+-- ActionButtonUseKeyDown conflict: WoW's secure click system dispatches on
+-- the press edge when that CVar is on, and on the release edge when it is
+-- off. A button registered only for 'AnyUp' is dead while the CVar is on
+-- (the reported "GUI buttons don't work" symptom). Rather than change the
+-- global CVar (a known action-bar taint vector), register our OWN secure
+-- buttons for the edge that matches the current CVar, and re-register on
+-- CVAR_UPDATE. Reading the CVar (GetCVarBool) is clean and
+-- RegisterForClicks is taint-safe out of combat; combat is deferred.
+local TMM_secureClickButtons = {}
+
+local function TMM_ClickEdge()
+    local down = GetCVarBool and GetCVarBool('ActionButtonUseKeyDown')
+    return down and 'AnyDown' or 'AnyUp'
+end
+
+local TMM_lastClickEdge
+-- Use in place of button:RegisterForClicks('AnyUp') for every secure button.
+local function TMM_RegisterSecureClicks(button)
+    if not button then return end
+    TMM_secureClickButtons[button] = true
+    local edge = TMM_ClickEdge()
+    TMM_lastClickEdge = edge
+    button:RegisterForClicks(edge)
+end
+
+-- Re-point every tracked secure button at the current CVar's edge.
+-- No-op when the edge is unchanged; returns false (defers) in combat
+-- because RegisterForClicks on a secure frame is protected in lockdown.
+local function TMM_RefreshSecureClicks()
+    local edge = TMM_ClickEdge()
+    if edge == TMM_lastClickEdge then return true end
+    if InCombatLockdown() then return false end
+    for b in pairs(TMM_secureClickButtons) do
+        if b then b:RegisterForClicks(edge) end
+    end
+    TMM_lastClickEdge = edge
+    return true
+end
+
 local function TMM_StopThreatFlash(button)
     if button._threatBorder then
         button._threatFlash = false
@@ -989,27 +1252,30 @@ function TauntMasterMini_UpdateThreat(button)
         return
     end
 
-    -- Class colour mode: bar colour is always the unit's class colour
+    -- Baseline (no-aggro) colour: the unit's class colour when class
+    -- colours are enabled, otherwise green. Threat still overrides this
+    -- to yellow/red below so tanks always see aggro either way.
+    local baseR, baseG, baseB
     if TMM_Get('useClassColours') then
         local class = select(2, UnitClass(unit))
         local color = class and RAID_CLASS_COLORS[class]
         if color then
-            button.healthbar:SetStatusBarColor(color.r, color.g, color.b)
+            baseR, baseG, baseB = color.r, color.g, color.b
         else
-            button.healthbar:SetStatusBarColor(0, 0, 0)
+            baseR, baseG, baseB = 0, 0, 0
         end
-        TMM_StopThreatFlash(button)
-        return
+    else
+        baseR, baseG, baseB = 0, 0.8, 0  -- Green
     end
 
     -- Threat colour scheme:
-    --   Green  = no aggro / not in combat
+    --   Baseline (green or class colour) = no aggro / not in combat
     --   Yellow = losing or gaining aggro
     --   Red    = full aggro (tanking securely)
 
     -- UnitAffectingCombat is C-side and returns clean values.
     if not UnitAffectingCombat(unit) then
-        button.healthbar:SetStatusBarColor(0, 0.8, 0)  -- Green
+        button.healthbar:SetStatusBarColor(baseR, baseG, baseB)
         TMM_StopThreatFlash(button)
         return
     end
@@ -1017,7 +1283,7 @@ function TauntMasterMini_UpdateThreat(button)
     local status = UnitThreatSituation(unit)
     if status == nil then
         -- nil is safe to compare (not tainted); means no threat data
-        button.healthbar:SetStatusBarColor(0, 0.8, 0)  -- Green
+        button.healthbar:SetStatusBarColor(baseR, baseG, baseB)
         TMM_StopThreatFlash(button)
         return
     end
@@ -1047,8 +1313,8 @@ function TauntMasterMini_UpdateThreat(button)
         button.healthbar:SetStatusBarColor(1, 1, 0)
         flashR, flashG, flashB, doFlash = 1, 1, 0, true
     else
-        -- Green (status 0) or anything unexpected → Green
-        button.healthbar:SetStatusBarColor(0, 0.8, 0)
+        -- Green (status 0) or anything unexpected → baseline (green or class colour)
+        button.healthbar:SetStatusBarColor(baseR, baseG, baseB)
         doFlash = false
     end
 
@@ -1115,6 +1381,24 @@ function TauntMasterMini_UpdateIcons(button)
         return
     end
 
+    -- Suppress class/role chrome ONLY for the lone solo target/focus bar
+    -- when it is an NPC/mob — that (and only that) is the "black squares"
+    -- case from before. Group bars (party*/raid*/player tokens) keep
+    -- their icons, INCLUDING NPC Follower-Dungeon companions (Crenna,
+    -- Meredy, ...): they are real group members with a class and an
+    -- assigned role, so the normal logic below must run for them.
+    -- Scoped by unit TOKEN (solo bars use 'target'/'focus'); GUID prefix
+    -- is the clean, taint-safe NPC test (cf. TMM_IsPlayer rationale).
+    local isSoloUnitBar = (unit == 'target' or unit == 'focus')
+    if isSoloUnitBar then
+        local guid = UnitGUID(unit)
+        if guid and not guid:match('^Player%-') then
+            if button._classIcon then button._classIcon:Hide() end
+            if button._roleIcon then button._roleIcon:Hide() end
+            return
+        end
+    end
+
     -- Role icon: show Tank/Healer/DPS based on assigned group role
     if button._roleIcon and button._roleIconTex then
         local role = UnitGroupRolesAssigned(unit)
@@ -1159,78 +1443,34 @@ local function TMM_GetSpellIcon(spellName)
             return info.iconID
         end
     end
-    TMM_spellIconCache[spellName] = false
+    -- DO NOT negative-cache a miss. On a cold login the spellbook is not
+    -- yet populated, so GetSpellInfo returns nil here for a perfectly valid
+    -- spell. Caching `false` made that "?" placeholder sticky for the whole
+    -- session (only /reload or a manual cache wipe cleared it) because
+    -- TMM_InvalidateSpellCache() does NOT wipe TMM_spellIconCache. Leaving
+    -- the entry absent lets the next rebuild (now driven by SPELLS_CHANGED)
+    -- re-query once spell data is available. These calls happen on
+    -- rebuild/config, never in OnUpdate, so the re-query cost is negligible.
     return nil
 end
 
--- Out-of-range check.
--- For hostile spells we check range to <unit>target; for helpful spells
--- we check range to <unit> itself.  Uses C_Spell.IsSpellInRange (12.0+)
--- which returns true/false, or the legacy IsSpellInRange (0/1/nil).
-local function TauntMasterMini_UpdateRange(button)
-    local unit = button:GetAttribute('unit')
-    if not unit or not UnitExists(unit) then
-        if button._oorOverlay then button._oorOverlay:Hide() end
-        return
-    end
-
-    -- Determine primary spell and the unit to range-check against
-    local spell = TMM_GetLeftSpell()
-    if not spell or spell == '' then spell = TMM_GetTauntSpell() end
-    if not spell then
-        if button._oorOverlay then button._oorOverlay:Hide() end
-        return
-    end
-
-    local isHelpful = C_Spell and C_Spell.IsSpellHelpful and C_Spell.IsSpellHelpful(spell)
-    local isHarmful = C_Spell and C_Spell.IsSpellHarmful and C_Spell.IsSpellHarmful(spell)
-
-    local checkUnit
-    if isHelpful and not isHarmful then
-        -- Friendly spell: range check to the group member
-        checkUnit = unit
-    else
-        -- Hostile or dual spell: range check to group member's target
-        checkUnit = unit .. 'target'
-    end
-
-    if not UnitExists(checkUnit) then
-        -- No valid target to check range against — hide overlay
-        if button._oorOverlay then button._oorOverlay:Hide() end
-        return
-    end
-
-    -- Try modern C_Spell.IsSpellInRange first (returns bool), then legacy
-    local inRange
-    if C_Spell and C_Spell.IsSpellInRange then
-        inRange = C_Spell.IsSpellInRange(spell, checkUnit)
-    elseif IsSpellInRange then
-        local r = IsSpellInRange(spell, checkUnit)
-        if r ~= nil then inRange = (r == 1) end
-    end
-
-    if button._oorOverlay then
-        if inRange == false then
-            button._oorOverlay:Show()
-        else
-            -- true or nil (no range data) — hide
-            button._oorOverlay:Hide()
-        end
-    end
-end
+-- NOTE: there is intentionally no out-of-range indicator. Range is an
+-- addon-disarmament "secret value" in Midnight (12.0): C_Spell.IsSpellInRange
+-- returns nil for valid spells, and UnitInRange returns secret booleans that
+-- throw when an addon branches on them. It is not achievable here. /tm range
+-- remains only as a diagnostic that demonstrates this.
 
 -- Throttle OnUpdate to ~10 fps to reduce CPU overhead
-local OOR_THROTTLE = 0.1
+local UPDATE_THROTTLE = 0.1
 
 function TauntMasterMini_Button_OnUpdate(self, elapsed)
     self._updateElapsed = (self._updateElapsed or 0) + elapsed
-    if self._updateElapsed < OOR_THROTTLE then return end
+    if self._updateElapsed < UPDATE_THROTTLE then return end
     self._updateElapsed = 0
 
     TauntMasterMini_UpdateThreat(self)
     TauntMasterMini_UpdateHealth(self)
     TauntMasterMini_UpdateIcons(self)
-    TauntMasterMini_UpdateRange(self)
 
     -- Pulse threat border alpha when flash is active
     if self._threatFlash and self._threatBorder then
@@ -1317,14 +1557,6 @@ local function TMM_CreateUnitButton(index)
     btn._threatBorder = border
     btn._threatFlash = false
 
-    -- Out-of-range overlay: semi-transparent red tint shown when the
-    -- spell target is out of range.  Sits above the health bar but below
-    -- the name text and click overlay.
-    local oorOverlay = btn:CreateTexture(name .. '_OOR', 'ARTWORK', nil, 2)
-    oorOverlay:SetAllPoints(btn)
-    oorOverlay:SetColorTexture(1, 0.1, 0.1, 0.4)
-    oorOverlay:Hide()
-    btn._oorOverlay = oorOverlay
 
     -- Cast-feedback flash: a brief white pulse on click so you can see the
     -- click registered. Driven purely by an Alpha animation — no SetAttribute
@@ -1350,7 +1582,7 @@ local function TMM_CreateUnitButton(index)
 
     local click = CreateFrame('Button', name .. '_Click', btn, 'SecureActionButtonTemplate')
     click:SetAllPoints(btn)
-    click:RegisterForClicks('AnyUp')
+    TMM_RegisterSecureClicks(click)
     click:SetFrameLevel(btn:GetFrameLevel() + 10)
 
     -- SecureActionButtonTemplate creates visual textures (NormalTexture,
@@ -1517,13 +1749,26 @@ TMM_RebuildRoster = function()
     end
 
     local units = {}
+    local testProfiles  -- test mode only: per-bar {class, role}, sorted
     local num = GetNumGroupMembers()
     local hideSelf = not TMM_Get('showSelf')
     local filterDps = TMM_Get('hideDpsInRaid') and IsInRaid()
     if TMM_TestCount > 0 then
         -- Test/config mode: N dummy bars, all bound to 'player' so every
-        -- secure macro and WoW API call stays valid and taint-free.
-        for _ = 1, TMM_TestCount do table.insert(units, 'player') end
+        -- secure macro and WoW API call stays valid and taint-free. The
+        -- random class/role is rolled HERE (once per rebuild) into a
+        -- profile list so the sort can reorder it — assigning it per
+        -- button index after sorting (the old approach) made "Sort:
+        -- Tanks first" a no-op on test bars.
+        testProfiles = {}
+        for k = 1, TMM_TestCount do
+            table.insert(units, 'player')
+            testProfiles[k] = {
+                class = TMM_TEST_CLASSES[math.random(#TMM_TEST_CLASSES)],
+                role  = TMM_TEST_ROLES[math.random(#TMM_TEST_ROLES)],
+            }
+        end
+        TMM_SortTestProfiles(testProfiles)
     elseif IsInRaid() and num > 0 then
         for i = 1, num do
             local raidUnit = 'raid' .. i
@@ -1548,7 +1793,9 @@ TMM_RebuildRoster = function()
         if TMM_Get('soloShowTarget') then table.insert(units, 'target') end
     end
 
-    TMM_SortUnits(units)
+    if TMM_TestCount == 0 then
+        TMM_SortUnits(units)  -- test bars are sorted via testProfiles above
+    end
 
     local perCol = TMM_Get('unitsPerColumn') or 10
     local maxCols = TMM_Get('maxColumns') or 4
@@ -1610,11 +1857,11 @@ TMM_RebuildRoster = function()
         btn:SetAttribute('unit', unit)
         btn._testIndex = (TMM_TestCount > 0) and i or nil
         if TMM_TestCount > 0 then
-            -- Randomise class/role per bar so the test layout looks like a
-            -- real mixed group instead of all-tank. Rolled once per rebuild
-            -- and stored, so the ~10fps icon refresh stays stable.
-            btn._testClass = TMM_TEST_CLASSES[math.random(#TMM_TEST_CLASSES)]
-            btn._testRole = TMM_TEST_ROLES[math.random(#TMM_TEST_ROLES)]
+            -- Pull the SORTED profile for this slot (rolled once per
+            -- rebuild above), so bar order reflects the chosen sort.
+            local p = testProfiles and testProfiles[i]
+            btn._testClass = p and p.class
+            btn._testRole = p and p.role
         else
             btn._testClass = nil
             btn._testRole = nil
@@ -1827,7 +2074,7 @@ TMM_CreateOrInitUI = function()
 
     if not TMMOptionsMenu then
         local f = CreateFrame('Frame', 'TMMOptionsMenu', UIParent, BackdropTemplateMixin and 'BackdropTemplate')
-        f:SetSize(380, 660)
+        f:SetSize(460, 660)  -- wide enough for the longest checkbox labels
         f:SetPoint('CENTER')
         f:SetBackdrop({
             bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
@@ -1860,7 +2107,7 @@ TMM_CreateOrInitUI = function()
         -- Tab system: fixed-size window, one page visible at a time, so the
         -- panel always fits on screen (replaces the old scroll-less tall list).
         local PAGE_X, PAGE_Y = 10, -66
-        local PAGE_W, PAGE_H = 360, 540
+        local PAGE_W, PAGE_H = 440, 540
 
         local curPage  -- helpers below add controls to whichever page is current
 
@@ -1870,6 +2117,8 @@ TMM_CreateOrInitUI = function()
                 if tb._page == p then tb:LockHighlight() else tb:UnlockHighlight() end
             end
             p:Show()
+            -- Keep the not-tank banner in sync whenever the panel/tab opens.
+            TMM_UpdateTankSpecNotice()
         end
 
         local function NewPage(tabLabel)
@@ -2113,6 +2362,20 @@ TMM_CreateOrInitUI = function()
         curPage._y = curPage._y - 30
 
         curPage = pageSpells
+        -- Not-in-tank-spec warning banner. Shown/hidden by
+        -- TMM_UpdateTankSpecNotice (login / spec change / panel open).
+        -- Space is reserved at the top of the Spells page so the
+        -- dropdowns sit at a consistent position whether or not it shows.
+        local tankBanner = curPage:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+        tankBanner:SetPoint('TOPLEFT', 12, curPage._y)
+        tankBanner:SetPoint('TOPRIGHT', -12, curPage._y)
+        tankBanner:SetJustifyH('CENTER')
+        tankBanner:SetText('|cFFFFD200Not in a tanking spec — taunt is '
+            .. 'unavailable until you switch to your tank spec.|r')
+        tankBanner:Hide()
+        f._tankBanner = tankBanner
+        curPage._y = curPage._y - 38
+
         f._leftSpellBtn = AddSpellDropdown('Left Click Spell', function()
             return TMM_GetLeftSpell()
         end, function(val)
@@ -2547,7 +2810,7 @@ TMM_CreateOrInitUI = function()
         intBtn:SetFrameLevel(header:GetFrameLevel() + 6)
         intBtn:SetAttribute('type', 'macro')
         intBtn:SetAttribute('macrotext', '')
-        intBtn:RegisterForClicks('AnyUp')
+        TMM_RegisterSecureClicks(intBtn)
         hooksecurefunc(intBtn, 'SetNormalTexture', function(self)
             local n = self:GetNormalTexture(); if n then n:SetAlpha(0) end
         end)
@@ -2638,7 +2901,7 @@ TMM_CreateOrInitUI = function()
             b:SetFrameLevel(header:GetFrameLevel() + 6)
             b:SetAttribute('type', 'macro')
             b:SetAttribute('macrotext', '')
-            b:RegisterForClicks('AnyUp')
+            TMM_RegisterSecureClicks(b)
             hooksecurefunc(b, 'SetNormalTexture', function(self)
                 local t = self:GetNormalTexture(); if t then t:SetAlpha(0) end
             end)
@@ -2762,7 +3025,7 @@ TMM_CreateOrInitUI = function()
             mb:SetAttribute('mk-off', '/targetmarker 0')
             mb:SetAttribute('macrotext', '/targetmarker ' .. n)
             mb:SetAttribute('mk-state', 'off')
-            mb:RegisterForClicks('AnyUp')
+            TMM_RegisterSecureClicks(mb)
             -- A unit can only carry ONE raid marker, so the bar is a radio
             -- group: turning a marker ON must also turn every OTHER marker
             -- OFF (state + macrotext) so the GUI matches reality. This sibling
@@ -2934,14 +3197,54 @@ TMM_CreateOrInitUI = function()
                     self._tmmPendingShowState = nil
                     TMM_SetHeaderShown(show)
                 end
+                if self._tmmPendingClicks == 1 then
+                    self._tmmPendingClicks = nil
+                    TMM_RefreshSecureClicks()
+                end
                 -- Reflow the top row now that moving secure frames is allowed.
                 if self._layoutTopRow then self._layoutTopRow() end
             elseif event == 'PLAYER_SPECIALIZATION_CHANGED' or event == 'TRAIT_CONFIG_UPDATED' or event == 'SPELLS_CHANGED' then
                 -- Invalidate spell cache so dropdowns show current spec/talent spells
                 TMM_InvalidateSpellCache()
                 DebugPrint('Spell cache invalidated due to', event)
+                -- Re-evaluate tank-spec notice for the new spec/talents.
+                TMM_UpdateTankSpecNotice()
+                -- COLD-LOGIN FIX: on a fresh login the spellbook is NOT
+                -- populated when ADDON_LOADED fires, so _configureTaunts()
+                -- set every secure macrotext to '' and every icon to the
+                -- "?" placeholder (taunt/interrupt/cooldowns do nothing,
+                -- dropdowns empty). SPELLS_CHANGED is the first point spell
+                -- data is actually available, so reconfigure the secure
+                -- buttons now. Combat-guarded: SetAttribute on secure
+                -- frames is illegal in combat, so defer to
+                -- PLAYER_REGEN_ENABLED exactly like the PEW path below.
+                if InCombatLockdown() then
+                    self._tmmPendingRebuild = 1
+                else
+                    TMM_RebuildRoster()
+                end
+                -- The Options > Spells panel icons are a SEPARATE path from
+                -- the bar's _configureTaunts: they are set by each spell
+                -- button's refreshText(), which only ran at the cold
+                -- ADDON_LOADED pass (spells not loaded -> "?"). Refresh them
+                -- now that spell data is available. refreshText only sets
+                -- text/icon textures (not secure) so it needs no combat
+                -- guard. Same trio refreshed on ADDON_LOADED / Reset.
+                if TMMOptionsMenu then
+                    if TMMOptionsMenu._leftSpellBtn and TMMOptionsMenu._leftSpellBtn.refreshText then
+                        TMMOptionsMenu._leftSpellBtn:refreshText()
+                    end
+                    if TMMOptionsMenu._rightSpellBtn and TMMOptionsMenu._rightSpellBtn.refreshText then
+                        TMMOptionsMenu._rightSpellBtn:refreshText()
+                    end
+                    if TMMOptionsMenu._interruptSpellBtn and TMMOptionsMenu._interruptSpellBtn.refreshText then
+                        TMMOptionsMenu._interruptSpellBtn:refreshText()
+                    end
+                end
             elseif event == 'PLAYER_ENTERING_WORLD' or event == 'GROUP_ROSTER_UPDATE' then
                 TMM_InvalidateSpellCache()
+                -- One-time login notice if not in a tank spec.
+                TMM_UpdateTankSpecNotice()
                 -- Clear pull debounce table on roster changes
                 for k in pairs(pullAlertCooldown) do pullAlertCooldown[k] = nil end
                 if InCombatLockdown() then
@@ -2951,6 +3254,11 @@ TMM_CreateOrInitUI = function()
                 end
                 -- Re-apply lock state after SavedVariables are restored
                 TMM_UpdateLockState()
+                -- Sync secure-click edge to ActionButtonUseKeyDown now that
+                -- the CVar is stable and all secure buttons exist.
+                if not TMM_RefreshSecureClicks() then
+                    self._tmmPendingClicks = 1
+                end
             elseif event == 'UNIT_THREAT_SITUATION_UPDATE' then
                 TMM_HandlePullEvent(...)
             elseif event == 'PLAYER_TARGET_CHANGED' then
@@ -2959,6 +3267,13 @@ TMM_CreateOrInitUI = function()
                 if TMM_Get('soloShowTarget') and not IsInGroup()
                    and not InCombatLockdown() then
                     TMM_RebuildRoster()
+                end
+            elseif event == 'CVAR_UPDATE' then
+                -- ActionButtonUseKeyDown (or any CVar) changed: re-point our
+                -- secure buttons at the matching click edge. Idempotent and
+                -- cheap; deferred to PLAYER_REGEN_ENABLED if it lands in combat.
+                if not TMM_RefreshSecureClicks() then
+                    self._tmmPendingClicks = 1
                 end
             end
         end)
@@ -2971,6 +3286,7 @@ TMM_CreateOrInitUI = function()
         header:RegisterEvent('TRAIT_CONFIG_UPDATED')
         header:RegisterEvent('SPELLS_CHANGED')
         header:RegisterEvent('UNIT_THREAT_SITUATION_UPDATE')
+        header:RegisterEvent('CVAR_UPDATE')
 
         TMM_UpdateLockState()
     end
@@ -2991,7 +3307,7 @@ end
 
 TMM_CreateOrInitUI()
 DebugPrint('TauntMasterMini.lua file loaded')
-print('|cFF00FF00TauntMasterMini v7.0.0|r by |cFFFFFFFFDon Thompson (Haruspex)|r. Type |cFFFFFF00/tm|r for options.')
+print('|cFF00FF00TauntMasterMini v7.1.0|r. Type |cFFFFFF00/tm|r for options.')
 
 
 

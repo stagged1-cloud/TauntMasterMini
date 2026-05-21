@@ -2,6 +2,33 @@
 
 All notable changes to TauntMasterMini will be documented in this file.
 
+## [7.1.0] - 2026-05-19
+
+### Added
+- **Smart per-class starter kit** — a fresh character or "Reset Defaults" now gets left = class taunt, right = a useful class spell, interrupt = the class interrupt. Defaults are **validated against the character's actually-known spells** (spellbook + active talents), so it never sets a spell the spec/talents don't have (no more "?" placeholders, no defaulting to an untalented spell)
+- **Not-in-tanking-spec notice** — one-time chat message on login / spec change plus a yellow banner on the Options → Spells tab when the current spec is not a tank spec
+
+### Changed
+- Options window widened (380 → 460) so longer checkbox labels no longer overflow
+
+### Removed
+- **Out-of-range indicator** — removed entirely (older versions had a red overlay). It is **not achievable under Midnight (12.0) addon-disarmament**: `C_Spell.IsSpellInRange` returns `nil` for valid spells/IDs, and `UnitInRange` returns *secret booleans* that throw when the addon branches on them ("secret boolean value, while execution tainted"). This is a permanent platform limitation. `/tm range` is kept as a diagnostic that demonstrates it
+
+### Fixed
+- **GUI buttons dead when WoW's `ActionButtonUseKeyDown` is enabled** (e.g. GSE users) — all secure buttons were registered for `AnyUp` only, so when that CVar makes the secure click system fire on the press edge the buttons did nothing. They now register for the click edge that matches the current CVar and re-sync on `CVAR_UPDATE` (combat-deferred). The global CVar is **not** changed (changing it from addon Lua is a known action-bar taint vector)
+- **Aggro not shown when "Class colours" was enabled** — the class-colour branch returned before the threat path ran, so bars stayed class-coloured even on a pull. Class colour is now the no-aggro *baseline* only; threat still overrides it to yellow (gaining/losing) and red (full aggro) with the border flash, exactly as in green mode
+- **Spells/icons inert until a manual `/reload` on a cold login** — on a fresh session the spellbook isn't populated when `ADDON_LOADED` fires, so secure macrotext was set to `''` and icons to the "?" placeholder. The secure buttons + icons now reconfigure on `SPELLS_CHANGED` (combat-guarded; deferred to `PLAYER_REGEN_ENABLED` in combat)
+- **Spell icons stuck as "?" for the whole session** — removed a sticky negative icon-cache entry that survived until `/reload`
+- **Options → Spells panel icons** not refreshing once spell data became available
+- **"Reset Defaults" not truly resetting** — class-specific spell keys were being migrated from the shared account-wide DB, cross-contaminating classes (a Death Knight's spells appearing on a Demon Hunter) and surviving Reset. These keys are now per-character only, with a one-time scrub of the stale account-wide copies
+- **"(None - Clear)" did not stick** — the kit re-populated a cleared spell on the next rebuild; an explicit clear (`''`) is now distinguished from "never set" (`nil`) and preserved
+- **Right-click defaulting to the taunt (duplicate of left-click)** when the kit utility wasn't known — utility/interrupt are now priority lists; the first *known* entry is chosen, with no taunt fallback for right-click
+- **Solo target bar showed meaningless black class/role squares** for NPC/mob targets; scoped so NPC Follower-Dungeon party members keep their class & role icons
+- Options checkbox labels overflowed the window
+
+### Notes
+- Spell-availability checks (smart kit) remain **display/config-only** and degrade gracefully where a value is opaque under Midnight addon-disarmament (§0a); none gate a secure cast. Range checks were found to be fully disarmed and the feature was removed (see Removed)
+
 ## [7.0.0] - 2026-05-18
 
 ### Added
@@ -308,7 +335,7 @@ Last version of the original addon before being abandoned.
 
 ## Attribution
 
-**TauntMasterMini v5.0.0+** - Modernized and rewritten by Don Thompson (Haruspex)
+**TauntMasterMini v5.0.0+** - Modernized and rewritten
 
 **Original TauntMaster2** - Created by Tartarusspawn (2015)
 - Project: https://www.curseforge.com/wow/addons/taunt-master-2
