@@ -18,6 +18,26 @@ local function DebugPrint(...)
     end
 end
 
+-- WoW: Forever ("Camelot") runs the Mainline 12.x API but reports a
+-- Classic-style interface number (16001). WOW_PROJECT_ID is 18 from build
+-- 1.60.1.70170; the interface range is a fallback for earlier beta builds.
+-- Everything Forever-specific below is gated on this, so retail behaviour
+-- is unchanged.
+local TMM_INTERFACE = select(4, GetBuildInfo()) or 0
+local TMM_IS_FOREVER = (WOW_PROJECT_ID == (WOW_PROJECT_CAMELOT or 18))
+    or (TMM_INTERFACE >= 16000 and TMM_INTERFACE < 20000)
+
+-- RegisterEvent throws on an event the client does not have, which would
+-- abort UI creation part-way. Used for events not guaranteed on Forever.
+local function TMM_SafeRegisterEvent(frame, event)
+    if C_EventUtils and C_EventUtils.IsEventValid
+       and not C_EventUtils.IsEventValid(event) then
+        DebugPrint('Event not available on this client:', event)
+        return false
+    end
+    return (pcall(frame.RegisterEvent, frame, event))
+end
+
 -- Globals used by XML / other files
 TMMButtons = TMMButtons or {}
 
@@ -39,6 +59,13 @@ local TMM_TEST_CLASSES = {
     'SHAMAN', 'MAGE', 'WARLOCK', 'MONK', 'DRUID', 'DEMONHUNTER', 'EVOKER',
 }
 local TMM_TEST_ROLES = { 'TANK', 'HEALER', 'DAMAGER' }
+-- Forever has only the nine original classes; keep test bars plausible.
+if TMM_IS_FOREVER then
+    TMM_TEST_CLASSES = {
+        'WARRIOR', 'PALADIN', 'HUNTER', 'ROGUE', 'PRIEST',
+        'SHAMAN', 'MAGE', 'WARLOCK', 'DRUID',
+    }
+end
 -- Known interrupt abilities across all classes/specs, for filtering the
 -- Interrupt Spell picker. Name-keyed (matches how spells are stored).
 local TMM_INTERRUPTS = {
@@ -49,6 +76,45 @@ local TMM_INTERRUPTS = {
     ['Muzzle'] = true, ['Quell'] = true, ['Spear Hand Strike'] = true,
     ['Counter Shot'] = true,
 }
+-- Forever (Classic+) interrupts. Added only on Forever so retail pickers
+-- are unchanged (Earth Shock is not an interrupt on retail).
+if TMM_IS_FOREVER then
+    TMM_INTERRUPTS['Shield Bash'] = true
+    TMM_INTERRUPTS['Earth Shock'] = true
+    TMM_INTERRUPTS['Feral Charge'] = true
+    -- Paladins have no real interrupt on Forever; Hammer of Justice (a stun)
+    -- is the only way to stop a stunnable caster. Labelled "(stun)" in the
+    -- picker and the button tooltip so it is not mistaken for a kick.
+    TMM_INTERRUPTS['Hammer of Justice'] = true
+end
+
+-- Forever: what each tank spell needs before it does its job. `tag` is
+-- shown next to the spell in the pickers; `note` under the Options button
+-- and in tooltips. Text only -- nothing here gates or alters a cast.
+-- Sources: Wowhead /forever/ beta tooltips (Oct 2026), vanilla rules where
+-- Forever is unchanged.
+local TMM_SPELL_REQ = {}
+if TMM_IS_FOREVER then
+    TMM_SPELL_REQ = {
+        ['Judgement']         = { tag = 'Seal of Fury',     note = 'Only taunts while Seal of Fury is active (4s taunt, 10 yd).' },
+        ['Taunt']             = { tag = 'Defensive Stance', note = 'Needs Defensive Stance (5 yd).' },
+        ['Mocking Blow']      = { tag = 'Battle Stance',    note = 'Needs Battle Stance. 6s taunt, 2 min cooldown.' },
+        ['Shield Bash']       = { tag = 'shield',           note = 'Needs a shield and Battle or Defensive Stance.' },
+        ['Pummel']            = { tag = 'Berserker Stance', note = 'Needs Berserker Stance.' },
+        ['Revenge']           = { tag = 'after a block/dodge/parry', note = 'Usable after you block, dodge or parry.' },
+        ['Thunder Clap']      = { tag = 'Battle/Defensive', note = 'Needs Battle or Defensive Stance.' },
+        ['Growl']             = { tag = 'Bear Form',        note = 'Needs Bear Form.' },
+        ['Bash']              = { tag = 'Bear Form, stun',  note = 'Bear Form. Stun: only interrupts stunnable casters.' },
+        ['Maul']              = { tag = 'Bear Form',        note = 'Needs Bear Form.' },
+        ['Swipe']             = { tag = 'Bear Form',        note = 'Needs Bear Form.' },
+        ['Feral Charge']      = { tag = 'Bear Form',        note = 'Needs Bear Form.' },
+        ['Hammer of Justice'] = { tag = 'stun',             note = 'Stun, not a true interrupt: only stops stunnable casters.' },
+        ['Blessing of Protection'] = { tag = 'on the member', note = "On the member: wipes their threat, but they can't attack." },
+    }
+end
+local function TMM_SpellReq(name)
+    return name and TMM_SPELL_REQ[name] or nil
+end
 
 -- Interrupt Rotation feature: per-class personal interrupt (English class
 -- token -> spell name) and approximate cooldowns. Names only -- cooldown is
@@ -68,6 +134,21 @@ local TMM_IROT_CD = {
     ['Counterspell'] = 24, ['Kick'] = 15, ['Wind Shear'] = 12,
     ['Counter Shot'] = 24, ['Quell'] = 20,
 }
+-- Forever overrides: vanilla-era class interrupts. Paladin and Hunter have
+-- none; Druid Feral Charge is unconfirmed as an interrupt on Forever, so it
+-- is left out of the rotation. Cooldowns are Wowhead /forever/ beta values
+-- (Oct 2026) and remain estimates, as on retail.
+if TMM_IS_FOREVER then
+    TMM_CLASS_INTERRUPT = {
+        WARRIOR = 'Shield Bash', ROGUE = 'Kick', MAGE = 'Counterspell',
+        SHAMAN = 'Earth Shock',
+    }
+    TMM_IROT_CD['Shield Bash'] = 12
+    TMM_IROT_CD['Pummel'] = 10
+    TMM_IROT_CD['Kick'] = 10
+    TMM_IROT_CD['Counterspell'] = 30
+    TMM_IROT_CD['Earth Shock'] = 6
+end
 local TMM_IROT_PREFIX = 'TMMIRot'
 
 -- Find the button assigned to a given unit token (e.g. "party1", "raid3")
@@ -138,6 +219,12 @@ local function TMM_GetTauntSpell()
         MONK = 'Provoke',
         DEMONHUNTER = 'Torment',
     }
+    if TMM_IS_FOREVER then
+        -- Forever: the Paladin taunt is Judgement while Seal of Fury is
+        -- active (4s taunt, 10s CD, 10yd). Warrior Taunt needs Defensive
+        -- Stance; Growl needs Bear Form.
+        map = { WARRIOR = 'Taunt', PALADIN = 'Judgement', DRUID = 'Growl' }
+    end
     return map[class]
 end
 
@@ -162,6 +249,19 @@ local TMM_CLASS_KIT = {
     DEMONHUNTER = { taunt = 'Torment',           utility = { 'Fracture', 'Shear', 'Throw Glaive', 'Immolation Aura' },                 interrupt = { 'Disrupt' } },
 }
 
+-- Forever (Classic+) starter kit. Only Warrior, Paladin and Druid tank on
+-- Forever. Right-click favours "save the DPS" tools: Mocking Blow (backup
+-- taunt), Blessing of Protection (cast on the member, drops their threat),
+-- Bash (stun-interrupt). Validated against known spells exactly like the
+-- retail kit, so anything not yet trained is skipped.
+if TMM_IS_FOREVER then
+    TMM_CLASS_KIT = {
+        WARRIOR = { taunt = 'Taunt',     utility = { 'Mocking Blow', 'Revenge', 'Sunder Armor', 'Thunder Clap' }, interrupt = { 'Shield Bash', 'Pummel' } },
+        PALADIN = { taunt = 'Judgement', utility = { 'Blessing of Protection', 'Hammer of Justice', 'Holy Strike' }, interrupt = { 'Hammer of Justice' } },
+        DRUID   = { taunt = 'Growl',     utility = { 'Bash', 'Maul', 'Swipe' },                                   interrupt = { 'Feral Charge' } },
+    }
+end
+
 local function TMM_GetClassKit()
     return TMM_CLASS_KIT[select(2, UnitClass('player'))]
 end
@@ -170,13 +270,41 @@ end
 -- or nil (spec not known yet — e.g. very early login; caller must NOT
 -- treat nil as "not tank"). Spec/role are NOT Midnight secret values,
 -- so no §0a concern; not combat-protected, safe any time.
-local function TMM_IsTankSpec()
-    if not GetSpecialization then return nil end
-    local idx = GetSpecialization()
+-- Player spec role ('TANK'/'HEALER'/'DAMAGER') or nil if unknown.
+-- C_SpecializationInfo first: the global GetSpecialization /
+-- GetSpecializationRole are absent on Forever. Same result on retail.
+local function TMM_GetSpecRole()
+    local getSpec = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization)
+                    or GetSpecialization
+    if not getSpec then return nil end
+    local idx = getSpec()
     if not idx then return nil end
-    local role = GetSpecializationRole and GetSpecializationRole(idx)
+    if GetSpecializationRole then return GetSpecializationRole(idx) end
+    local getInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo)
+                    or GetSpecializationInfo
+    if getInfo then return (select(5, getInfo(idx))) end
+    return nil
+end
+
+local function TMM_IsTankSpec()
+    local role = TMM_GetSpecRole()
     if not role then return nil end
     return role == 'TANK'
+end
+
+-- Group role with a Forever fallback: there is no dungeon finder on
+-- Forever, so assigned roles are usually NONE; Classic groups mark tanks
+-- with the raid Main Tank assignment instead. pcall'd so a secret boolean
+-- can never throw here (§0a). Retail path is plain UnitGroupRolesAssigned.
+local function TMM_GetUnitRole(unit)
+    local role = UnitGroupRolesAssigned(unit)
+    if TMM_IS_FOREVER and (not role or role == 'NONE') and GetPartyAssignment then
+        local ok, isMT = pcall(function()
+            return GetPartyAssignment('MAINTANK', unit) == true
+        end)
+        if ok and isMT then role = 'TANK' end
+    end
+    return role
 end
 
 -- Tracks the last *notified* state so the chat line prints only on a
@@ -184,14 +312,32 @@ end
 -- every event. nil = nothing notified yet this session.
 local TMM_tankNoticeState = nil
 
+-- Forever: taunting does not depend on spec, it depends on stance/form/seal.
+-- Returns the class-specific hint shown instead of the retail "switch to
+-- your tank spec" wording (which is wrong on Forever). Text only.
+local TMM_FOREVER_TAUNT_HINT = {
+    PALADIN = 'Judgement only taunts while Seal of Fury is active.',
+    WARRIOR = 'Taunt needs Defensive Stance.',
+    DRUID   = 'Growl needs Bear Form.',
+}
+local function TMM_ForeverTauntHint()
+    return TMM_FOREVER_TAUNT_HINT[select(2, UnitClass('player'))]
+        or 'Your class has no taunt on Forever.'
+end
+
 local function TMM_UpdateTankSpecNotice()
     local isTank = TMM_IsTankSpec()
     if isTank == nil then return end  -- spec unknown yet; try again later
     if isTank ~= TMM_tankNoticeState then
         if not isTank then
-            print('|cFF00FFFFTauntMasterMini:|r |cFFFFFF00You are not in a '
-                .. 'tanking spec — taunt/threat features are limited until '
-                .. 'you switch to your tank spec.|r')
+            if TMM_IS_FOREVER then
+                print('|cFF00FFFFTauntMasterMini:|r |cFFFFFF00'
+                    .. TMM_ForeverTauntHint() .. '|r')
+            else
+                print('|cFF00FFFFTauntMasterMini:|r |cFFFFFF00You are not in a '
+                    .. 'tanking spec — taunt/threat features are limited until '
+                    .. 'you switch to your tank spec.|r')
+            end
         end
         TMM_tankNoticeState = isTank
     end
@@ -372,7 +518,7 @@ local function TMM_SortUnits(units)
         end)
     else  -- 'tank' or 'role'
         for _, e in ipairs(dec) do
-            local r = UnitGroupRolesAssigned(e.tok) or 'NONE'
+            local r = TMM_GetUnitRole(e.tok) or 'NONE'
             if mode == 'tank' then
                 e.rank = (r == 'TANK') and 1 or 2
             else
@@ -743,7 +889,13 @@ local function TMM_ShowSpellPicker(owner)
         rootDescription:CreateDivider()
 
         for _, spellName in ipairs(spells) do
-            rootDescription:CreateButton(spellName, function()
+            -- Display label only; the stored value stays the bare spell name.
+            local label = spellName
+            local req = TMM_SpellReq(spellName)
+            if req then
+                label = spellName .. '  |cFFFF9933(' .. req.tag .. ')|r'
+            end
+            rootDescription:CreateButton(label, function()
                 if owner.setterFunction then
                     owner.setterFunction(spellName)
                     if owner.refreshText then
@@ -967,6 +1119,68 @@ SlashCmdList['TAUNTMASTERMINI'] = function(msg)
         end
         print('|cFF888888Range is opaque/secret under Midnight '
               .. 'addon-disarmament — the indicator is not achievable.|r')
+    elseif msg == 'probe' then
+        -- Forever port diagnostic. Read-only: every risky call is pcall'd
+        -- and only issecretvalue() booleans are printed, never the secret
+        -- values themselves (§0a). Best run in combat with a mob targeted.
+        local function yn(v) return v and '|cFF00FF00YES|r' or '|cFFFF0000NO|r' end
+        local function try(label, fn)
+            local ok, a = pcall(fn)
+            print('  ' .. label .. ': '
+                .. (ok and tostring(a) or ('|cFFFF0000error|r ' .. tostring(a))))
+        end
+        local sec = issecretvalue or function() return false end
+        print('|cFF00FFFFTauntMasterMini Forever Probe|r')
+        print('  Forever mode:', yn(TMM_IS_FOREVER), 'project:', tostring(WOW_PROJECT_ID),
+              'interface:', tostring(TMM_INTERFACE))
+        print('  global GetSpecialization:', yn(GetSpecialization),
+              'GetSpecializationRole:', yn(GetSpecializationRole))
+        print('  C_SpecializationInfo.GetSpecialization:',
+              yn(C_SpecializationInfo and C_SpecializationInfo.GetSpecialization))
+        print('  spec role:', tostring(TMM_GetSpecRole()))
+        local valid = C_EventUtils and C_EventUtils.IsEventValid
+        for _, ev in ipairs({ 'PLAYER_SPECIALIZATION_CHANGED', 'TRAIT_CONFIG_UPDATED', 'CVAR_UPDATE' }) do
+            print('  event ' .. ev .. ':', valid and yn(valid(ev)) or '?')
+        end
+        print('  MenuUtil:', yn(MenuUtil), 'WrapScript:', yn(SecureHandlerWrapScript),
+              'GetPartyAssignment:', yn(GetPartyAssignment), 'C_Secrets:', yn(C_Secrets))
+        local ts = TMM_GetTauntSpell()
+        try('taunt spell / spellID', function()
+            local info = ts and C_Spell.GetSpellInfo(ts)
+            return tostring(ts) .. ' / ' .. tostring(info and info.spellID)
+        end)
+        print('  saved left/right/interrupt:', TMM_GetLeftSpell(), '/', TMM_GetRightSpell(),
+              '/', TMM_GetInterruptSpell())
+        if C_Secrets then
+            try('ShouldUnitThreatValuesBeSecret', function()
+                return C_Secrets.ShouldUnitThreatValuesBeSecret('player', 'target') end)
+            try('ShouldCooldownsBeSecret', function()
+                return C_Secrets.ShouldCooldownsBeSecret() end)
+        end
+        try('UnitThreatSituation secret', function()
+            return sec(UnitThreatSituation('player', 'target')) end)
+        try('UnitDetailedThreatSituation pct secret', function()
+            local _, _, pct = UnitDetailedThreatSituation('player', 'target')
+            return sec(pct) end)
+        try('UnitHealth(target) secret', function() return sec(UnitHealth('target')) end)
+        if ts then
+            try('IsSpellInRange(taunt,target) secret', function()
+                return sec(C_Spell.IsSpellInRange(ts, 'target')) end)
+            try('GetSpellCooldown(taunt) secret', function()
+                local c = C_Spell.GetSpellCooldown(ts)
+                return c and sec(c.startTime) end)
+        end
+        for _, u in ipairs({ 'party1', 'party2', 'party3', 'party4' }) do
+            if UnitExists(u) then
+                try(u .. ' role (with MT fallback)', function() return TMM_GetUnitRole(u) end)
+            end
+        end
+        print('  SavedVariables stamp from last probe:',
+              tostring(TauntMasterMiniDBChar and TauntMasterMiniDBChar._probeStamp),
+              '(nil the first time; must show the previous value after a relog)')
+        if TauntMasterMiniDBChar then
+            TauntMasterMiniDBChar._probeStamp = date('%Y-%m-%d %H:%M:%S')
+        end
     elseif msg == 'spells' then
         print('|cFF00FFFFTauntMasterMini Spell Diagnostic|r')
         print('--- API Checks ---')
@@ -1447,16 +1661,14 @@ function TauntMasterMini_UpdateIcons(button)
 
     -- Role icon: show Tank/Healer/DPS based on assigned group role
     if button._roleIcon and button._roleIconTex then
-        local role = UnitGroupRolesAssigned(unit)
+        local role = TMM_GetUnitRole(unit)
         if not role or role == 'NONE' then
-            -- Fall back to spec role for the player, default DPS for others
+            -- Fall back to spec role for the player, default DPS for others.
+            -- TMM_GetSpecRole is C_SpecializationInfo-first: the bare global
+            -- GetSpecialization() call that was here errors every tick on
+            -- Forever, where that global does not exist.
             if TMM_IsPlayer(unit) then
-                local spec = GetSpecialization()
-                if spec then
-                    role = GetSpecializationRole(spec) or 'DAMAGER'
-                else
-                    role = 'DAMAGER'
-                end
+                role = TMM_GetSpecRole() or 'DAMAGER'
             else
                 role = 'DAMAGER'
             end
@@ -1829,7 +2041,7 @@ TMM_RebuildRoster = function()
             local raidUnit = 'raid' .. i
             if not (hideSelf and TMM_IsPlayer(raidUnit)) then
                 if filterDps then
-                    local role = UnitGroupRolesAssigned(raidUnit)
+                    local role = TMM_GetUnitRole(raidUnit)
                     if role == 'TANK' or role == 'HEALER' then
                         table.insert(units, raidUnit)
                     end
@@ -2067,7 +2279,7 @@ local function TMM_HandlePullEvent(unit)
     if not unit or not UnitExists(unit) then return end
     if unit == 'player' then return end                 -- ignore ourselves
     if not IsInGroup() then return end                  -- must be grouped
-    local role = UnitGroupRolesAssigned(unit)
+    local role = TMM_GetUnitRole(unit)
     if role == 'TANK' then return end                   -- ignore other tanks
 
     -- Check threat vs the unit's own target first (works even if player isn't targeting the mob),
@@ -2295,8 +2507,20 @@ TMM_CreateOrInitUI = function()
                 set(value)
                 button:refreshText()
             end
+            if TMM_IS_FOREVER then
+                local note = curPage:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+                note:SetPoint('TOPLEFT', iconFrame, 'BOTTOMLEFT', 0, -3)
+                note:SetPoint('RIGHT', curPage, 'RIGHT', -12, 0)
+                note:SetJustifyH('LEFT')
+                note:SetWordWrap(false)
+                button._spellNote = note
+            end
             function button:refreshText()
                 local value = get()
+                if self._spellNote then
+                    local req = (value and value ~= '') and TMM_SpellReq(value)
+                    self._spellNote:SetText(req and ('|cFFFF9933' .. req.note .. '|r') or '')
+                end
                 if not value or value == '' then
                     self:SetText('Select Spell')
                     self._spellIcon:SetTexture('Interface/Icons/INV_Misc_QuestionMark')
@@ -2314,7 +2538,7 @@ TMM_CreateOrInitUI = function()
                 end
                 TMM_ShowSpellPicker(self)
             end)
-            curPage._y = curPage._y - 34
+            curPage._y = curPage._y - 34 - (TMM_IS_FOREVER and 16 or 0)
             return button
         end
 
@@ -2426,8 +2650,12 @@ TMM_CreateOrInitUI = function()
         tankBanner:SetPoint('TOPLEFT', 12, curPage._y)
         tankBanner:SetPoint('TOPRIGHT', -12, curPage._y)
         tankBanner:SetJustifyH('CENTER')
-        tankBanner:SetText('|cFFFFD200Not in a tanking spec — taunt is '
-            .. 'unavailable until you switch to your tank spec.|r')
+        if TMM_IS_FOREVER then
+            tankBanner:SetText('|cFFFFD200' .. TMM_ForeverTauntHint() .. '|r')
+        else
+            tankBanner:SetText('|cFFFFD200Not in a tanking spec — taunt is '
+                .. 'unavailable until you switch to your tank spec.|r')
+        end
         tankBanner:Hide()
         f._tankBanner = tankBanner
         curPage._y = curPage._y - 38
@@ -2853,8 +3081,20 @@ TMM_CreateOrInitUI = function()
             ['Growl'] = 8, ['Provoke'] = 8, ['Torment'] = 8,
         }
         local TMM_DEFAULT_CD = 8
+        -- Forever values (Wowhead /forever/ beta data, Oct 2026).
+        if TMM_IS_FOREVER then
+            TMM_SPELL_CD['Judgement'] = 10
+            TMM_SPELL_CD['Mocking Blow'] = 120
+            TMM_SPELL_CD['Shield Bash'] = 12
+            TMM_SPELL_CD['Holy Strike'] = 10
+            -- vanilla values, unverified on Forever:
+            TMM_SPELL_CD['Hammer of Justice'] = 60
+            TMM_SPELL_CD['Bash'] = 60
+            TMM_SPELL_CD['Revenge'] = 5
+            TMM_SPELL_CD['Blessing of Protection'] = 300
+        end
 
-        local function TMM_MakeCDIndicator(idName, getter)
+        local function TMM_MakeCDIndicator(idName, getter, label)
             local fr = CreateFrame('Frame', idName, header)
             fr:SetSize(skullSz, skullSz)
             fr:SetFrameLevel(header:GetFrameLevel() + 25)
@@ -2882,14 +3122,36 @@ TMM_CreateOrInitUI = function()
                     self._iconTex:SetVertexColor(0.6, 0.6, 0.6, 1)
                 end
             end)
+            -- Hover tooltip: which spell and which click it is bound to.
+            -- Plain (non-secure) frame, so mouse-enabling it is combat-safe.
+            fr._label = label
+            fr:EnableMouse(true)
+            fr:SetScript('OnEnter', function(self)
+                local sp = self._getter()
+                local set = sp and sp ~= ''
+                GameTooltip:SetOwner(self, 'ANCHOR_TOP')
+                GameTooltip:SetText(set and sp or 'No spell set', 1, 1, 1)
+                local req = set and TMM_SpellReq(sp)
+                if req then GameTooltip:AddLine(req.note, 1, 0.6, 0.2, true) end
+                GameTooltip:AddLine((self._label or 'Click') .. ' a bar to cast this.',
+                    0.8, 0.8, 0.8, true)
+                if set then
+                    GameTooltip:AddLine('Greys out while on cooldown (estimated from your cast).',
+                        0.6, 0.6, 0.6, true)
+                else
+                    GameTooltip:AddLine('Set it in Options > Spells.', 0.6, 0.6, 0.6, true)
+                end
+                GameTooltip:Show()
+            end)
+            fr:SetScript('OnLeave', GameTooltip_Hide)
             return fr
         end
 
         -- Positions for leftCD/rightCD (and intBtn/taunt buttons) are set by
         -- header._layoutTopRow(), which reflows only the enabled icons with
         -- no gaps, centred above the bars.
-        local leftCD = TMM_MakeCDIndicator('TMMLeftCD', TMM_GetLeftSpell)
-        local rightCD = TMM_MakeCDIndicator('TMMRightCD', TMM_GetRightSpell)
+        local leftCD = TMM_MakeCDIndicator('TMMLeftCD', TMM_GetLeftSpell, 'Left-click')
+        local rightCD = TMM_MakeCDIndicator('TMMRightCD', TMM_GetRightSpell, 'Right-click')
         header._leftCD, header._rightCD = leftCD, rightCD
 
         local function TMM_UpdateTauntCDVisible()
@@ -2931,6 +3193,14 @@ TMM_CreateOrInitUI = function()
             ['Spell Lock'] = 24, ['Wind Shear'] = 12, ['Disrupt'] = 15,
             ['Avenger\'s Shield'] = 15, ['Silence'] = 45, ['Solar Beam'] = 60,
         }
+        if TMM_IS_FOREVER then
+            TMM_INT_CD['Shield Bash'] = 12
+            TMM_INT_CD['Pummel'] = 10
+            TMM_INT_CD['Kick'] = 10
+            TMM_INT_CD['Counterspell'] = 30
+            TMM_INT_CD['Earth Shock'] = 6
+            TMM_INT_CD['Hammer of Justice'] = 60  -- vanilla value; unverified on Forever
+        end
         local intBtn = CreateFrame('Button', 'TMMInterruptBtn', UIParent,
             'SecureActionButtonTemplate')
         intBtn:SetSize(TMM_Get('interruptSize') or 20, TMM_Get('interruptSize') or 20)
@@ -2999,6 +3269,10 @@ TMM_CreateOrInitUI = function()
             local sp = TMM_GetInterruptSpell()
             GameTooltip:AddLine(sp ~= '' and ('Casts ' .. sp .. ' on your target.')
                 or 'Set an interrupt spell in Options > Spells.', 0.8, 0.8, 0.8, true)
+            local req = TMM_SpellReq(sp)
+            if req then
+                GameTooltip:AddLine(req.note, 1, 0.6, 0.2, true)
+            end
             GameTooltip:Show()
         end)
         intBtn:SetScript('OnLeave', GameTooltip_Hide)
@@ -3732,11 +4006,11 @@ TMM_CreateOrInitUI = function()
         header:RegisterEvent('PLAYER_ENTERING_WORLD')
         header:RegisterEvent('GROUP_ROSTER_UPDATE')
         header:RegisterEvent('PLAYER_REGEN_ENABLED')
-        header:RegisterEvent('PLAYER_SPECIALIZATION_CHANGED')
-        header:RegisterEvent('TRAIT_CONFIG_UPDATED')
+        TMM_SafeRegisterEvent(header, 'PLAYER_SPECIALIZATION_CHANGED')
+        TMM_SafeRegisterEvent(header, 'TRAIT_CONFIG_UPDATED')
         header:RegisterEvent('SPELLS_CHANGED')
         header:RegisterEvent('UNIT_THREAT_SITUATION_UPDATE')
-        header:RegisterEvent('CVAR_UPDATE')
+        TMM_SafeRegisterEvent(header, 'CVAR_UPDATE')
 
         TMM_UpdateLockState()
     end
@@ -3760,6 +4034,7 @@ DebugPrint('TauntMasterMini.lua file loaded')
 local TMM_VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata
     and C_AddOns.GetAddOnMetadata(addonName, 'Version')) or '?'
 print('|cFF00FF00TauntMasterMini v' .. TMM_VERSION
+    .. (TMM_IS_FOREVER and ' (Forever)' or '')
     .. '|r. Type |cFFFFFF00/tm|r for options.')
 
 
