@@ -50,6 +50,26 @@ local TMM_INTERRUPTS = {
     ['Counter Shot'] = true,
 }
 
+-- Interrupt Rotation feature: per-class personal interrupt (English class
+-- token -> spell name) and approximate cooldowns. Names only -- cooldown is
+-- ESTIMATED locally from an observed cast + GetTime(), never the secret
+-- C_Spell.GetSpellCooldown (§0a). Classes with no reliable personal
+-- interrupt (Priest; Warlock = pet-based) are intentionally absent.
+-- Talent-modified cooldowns are not reflected (v1 limitation).
+local TMM_CLASS_INTERRUPT = {
+    WARRIOR = 'Pummel', PALADIN = 'Rebuke', DEATHKNIGHT = 'Mind Freeze',
+    DRUID = 'Skull Bash', MONK = 'Spear Hand Strike', DEMONHUNTER = 'Disrupt',
+    MAGE = 'Counterspell', ROGUE = 'Kick', SHAMAN = 'Wind Shear',
+    HUNTER = 'Counter Shot', EVOKER = 'Quell',
+}
+local TMM_IROT_CD = {
+    ['Pummel'] = 15, ['Rebuke'] = 15, ['Mind Freeze'] = 15,
+    ['Skull Bash'] = 15, ['Spear Hand Strike'] = 15, ['Disrupt'] = 15,
+    ['Counterspell'] = 24, ['Kick'] = 15, ['Wind Shear'] = 12,
+    ['Counter Shot'] = 24, ['Quell'] = 20,
+}
+local TMM_IROT_PREFIX = 'TMMIRot'
+
 -- Find the button assigned to a given unit token (e.g. "party1", "raid3")
 local function TMM_FindButtonForUnit(unit)
     for _, btn in ipairs(TMMButtons) do
@@ -91,6 +111,8 @@ local DEFAULTS = {
     showMarkerBar = true,  -- replaces the removed top skull button
     showTauntButtons = false,
     soloShowTarget = false,
+    showInterruptOrder = false,  -- shared kick-rotation frame; opt-in
+    standaloneInterrupt = false, -- kick window only, tank frame hidden
 }
 
 -- Forward declarations
@@ -883,6 +905,16 @@ SlashCmdList['TAUNTMASTERMINI'] = function(msg)
         TMM_SetLocked(false)
     elseif msg == 'debug' then
         if TMM_DebugDump then TMM_DebugDump() end
+    elseif msg == 'kick' or msg:match('^kick%s') then
+        -- Interrupt Rotation: "/tm kick" prints the order, "/tm kick next"
+        -- advances the rotation pointer (for members not running TMM).
+        if TMMInterruptOrder then
+            if msg:match('^kick%s+next') then
+                TMMInterruptOrder:Advance()
+            else
+                TMMInterruptOrder:PrintList()
+            end
+        end
     elseif msg == 'range' then
         print('|cFF00FFFFTauntMasterMini Range Diagnostic|r')
         print('  C_Spell.IsSpellInRange present:',
@@ -1754,6 +1786,15 @@ TMM_RebuildRoster = function()
     if InCombatLockdown() then return end
     local parent = TauntMasterMini_Header or UIParent
 
+    -- Standalone Interrupt Tracker: the tank frame is suppressed entirely;
+    -- only the interrupt-rotation window is used (e.g. a non-tank running
+    -- keystones). Combat-safe -- TMM_RebuildRoster already returned above
+    -- if InCombatLockdown.
+    if TMM_Get('standaloneInterrupt') then
+        parent:Hide()
+        return
+    end
+
     -- Hide when not in party/raid if option is enabled (test mode overrides it)
     if TMM_TestCount == 0 and TMM_Get('hideWhenSolo') and not IsInGroup() then
         parent:Hide()
@@ -2472,6 +2513,29 @@ TMM_CreateOrInitUI = function()
         end
         f:_updateInterruptSpellEnabled()
 
+        -- Interrupt Rotation toggles live on the Spells tab, next to the
+        -- Interrupt Spell picker they relate to.
+        AddCheck('Show Interrupt Order  (shared kick rotation; needs a party)', function()
+            return TMM_Get('showInterruptOrder') == true
+        end, function(val)
+            TMM_Set('showInterruptOrder', val and true or false)
+            if TMMInterruptOrder then
+                TMMInterruptOrder:Refresh()
+                if val then TMMInterruptOrder:SendHello() end
+            end
+        end)
+
+        AddCheck('Standalone Interrupt Tracker  (hide tank frame; for non-tanks)', function()
+            return TMM_Get('standaloneInterrupt') == true
+        end, function(val)
+            TMM_Set('standaloneInterrupt', val and true or false)
+            TMM_RebuildRoster()  -- self-guards combat; shows/hides the tank frame
+            if TMMInterruptOrder then
+                TMMInterruptOrder:Refresh()
+                if val then TMMInterruptOrder:SendHello() end
+            end
+        end)
+
         curPage = pageDisplay
         AddCheck('Show Minimap Icon', function()
             return not (TMM_MinimapSettings().hide)
@@ -3175,6 +3239,325 @@ TMM_CreateOrInitUI = function()
         end)
         TMM_UpdateMarkerBar()
 
+        ----------------------------------------------------------------------
+        -- INTERRUPT ROTATION ("your turn to kick") -- v1
+        -- A shared, ordered kick list for the group. §0a-safe: a member's
+        -- interrupt cooldown is ESTIMATED from an observed cast event + a
+        -- static CD table + GetTime() (the same pattern the 6.6.0 cooldown
+        -- overlays use) -- no secret value is ever read or branched on.
+        -- Coordination is via C_ChatInfo addon messages (NOT the
+        -- taint-blocked SendChatMessage). The frame is plain/non-secure, so
+        -- every update is combat-legal; there is no SetAttribute and no
+        -- taint vector here. [Paranoid]
+        ----------------------------------------------------------------------
+        local IROT_ROWH, IROT_MAXROWS, IROT_W = 18, 8, 176
+
+        local irot = CreateFrame('Frame', 'TMMInterruptOrder', UIParent,
+            BackdropTemplateMixin and 'BackdropTemplate')
+        irot:SetSize(IROT_W, IROT_ROWH * 2 + 24)
+        irot:SetBackdrop({
+            bgFile = 'Interface/Tooltips/UI-Tooltip-Background',
+            edgeFile = 'Interface/Tooltips/UI-Tooltip-Border',
+            tile = true, tileSize = 16, edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+        })
+        irot:SetBackdropColor(0, 0, 0, 0.9)
+        irot:SetFrameStrata('MEDIUM')
+        irot:SetClampedToScreen(true)
+        irot:SetMovable(true)
+        irot:EnableMouse(true)
+        irot:RegisterForDrag('LeftButton')
+        irot:SetPoint('CENTER', UIParent, 'CENTER', 260, 0)  -- default; restored later
+        irot:SetScript('OnDragStart', function(self) self:StartMoving() end)
+        irot:SetScript('OnDragStop', function(self)
+            self:StopMovingOrSizing()
+            local p, _, rp, x, y = self:GetPoint()
+            if p and TauntMasterMiniDBChar then
+                TauntMasterMiniDBChar.interruptOrderPos =
+                    { point = p, relPoint = rp, x = x, y = y }
+            end
+        end)
+        irot:Hide()
+
+        local irotTitle = irot:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+        irotTitle:SetPoint('TOP', 0, -5)
+        irotTitle:SetText('|cFF33FF33Interrupt Order|r')
+
+        -- Row pool: created ONCE, at load (never in combat).
+        local irotRows = {}
+        for i = 1, IROT_MAXROWS do
+            local row = CreateFrame('Frame', nil, irot)
+            row:SetSize(IROT_W - 16, IROT_ROWH)
+            if i == 1 then
+                row:SetPoint('TOPLEFT', 8, -20)
+            else
+                row:SetPoint('TOPLEFT', irotRows[i - 1], 'BOTTOMLEFT', 0, 0)
+            end
+            local hl = row:CreateTexture(nil, 'BACKGROUND')
+            hl:SetAllPoints()
+            hl:SetColorTexture(1, 0.82, 0, 0.22)  -- NEXT highlight
+            hl:Hide()
+            local ic = row:CreateTexture(nil, 'ARTWORK')
+            ic:SetSize(IROT_ROWH - 4, IROT_ROWH - 4)
+            ic:SetPoint('LEFT', 0, 0)
+            ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            local nm = row:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+            nm:SetPoint('LEFT', ic, 'RIGHT', 4, 0)
+            nm:SetJustifyH('LEFT')
+            nm:SetWidth(IROT_W - 16 - IROT_ROWH - 46)
+            local st = row:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+            st:SetPoint('RIGHT', -2, 0)
+            st:SetJustifyH('RIGHT')
+            row._hl, row._icon, row._name, row._state = hl, ic, nm, st
+            row:Hide()
+            irotRows[i] = row
+        end
+
+        -- Session-only state (never written to SavedVariables). irotList is
+        -- an ordered array of { name, class, interrupt, isPlayer, readyAt };
+        -- irotByName indexes it by base name; irotPos is the rotation
+        -- pointer (1-based index into irotList).
+        local irotList, irotByName, irotPos = {}, {}, 1
+        -- Base names confirmed to run TMM (via a HELLO/CAST message). Only
+        -- the player + these are listed: non-TMM players and NPC followers
+        -- cannot be tracked under Midnight disarmament, so listing them
+        -- would only add dead "--" rows.
+        local irotTMM = {}
+        local playerName = (UnitName('player') or ''):match('^[^-]+')
+        local playerClass = select(2, UnitClass('player'))
+        local playerInterrupt = playerClass and TMM_CLASS_INTERRUPT[playerClass]
+
+        local function IRot_BaseName(n) return n and n:match('^[^-]+') or n end
+
+        local function IRot_Channel()
+            if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then return 'INSTANCE_CHAT' end
+            if IsInRaid() then return 'RAID' end
+            if IsInGroup() then return 'PARTY' end
+            return nil
+        end
+
+        local function IRot_Send(text)
+            if TMM_Get('showInterruptOrder') ~= true then return end
+            local ch = IRot_Channel()
+            if ch and C_ChatInfo and C_ChatInfo.SendAddonMessage then
+                C_ChatInfo.SendAddonMessage(TMM_IROT_PREFIX, text, ch)
+            end
+        end
+
+        -- HELLO is debounced ~2s so a flurry of roster updates sends one.
+        local irotHelloQueued = false
+        local function IRot_SendHello()
+            if irotHelloQueued then return end
+            irotHelloQueued = true
+            C_Timer.After(2, function()
+                irotHelloQueued = false
+                IRot_Send('H')
+            end)
+        end
+
+        -- Rebuild the ordered interrupter list from the current roster.
+        -- Carries each member's readyAt across the rebuild.
+        local function IRot_Rebuild()
+            local oldByName = irotByName
+            irotList, irotByName = {}, {}
+            local units = {}
+            if IsInRaid() then
+                for i = 1, GetNumGroupMembers() do units[#units + 1] = 'raid' .. i end
+            else
+                units[#units + 1] = 'player'
+                for i = 1, 4 do units[#units + 1] = 'party' .. i end
+            end
+            for _, u in ipairs(units) do
+                if UnitExists(u) then
+                    local cls = select(2, UnitClass(u))
+                    local spell = cls and TMM_CLASS_INTERRUPT[cls]
+                    if spell and #irotList < IROT_MAXROWS then
+                        local nm = IRot_BaseName(GetUnitName(u, true) or UnitName(u))
+                        if nm and not irotByName[nm]
+                           and (nm == playerName or irotTMM[nm]) then
+                            local old = oldByName[nm]
+                            local e = {
+                                name = nm, class = cls, interrupt = spell,
+                                isPlayer = (nm == playerName),
+                                readyAt = (old and old.readyAt) or 0,
+                            }
+                            irotList[#irotList + 1] = e
+                            irotByName[nm] = e
+                        end
+                    end
+                end
+            end
+            if irotPos > #irotList or irotPos < 1 then irotPos = 1 end
+        end
+
+        local function IRot_Layout()
+            for i = 1, IROT_MAXROWS do
+                local row, e = irotRows[i], irotList[i]
+                if e then
+                    local col = (RAID_CLASS_COLORS and RAID_CLASS_COLORS[e.class])
+                                or { r = 1, g = 1, b = 1 }
+                    row._name:SetText(e.name)
+                    row._name:SetTextColor(col.r, col.g, col.b)
+                    row._icon:SetTexture(TMM_GetSpellIcon(e.interrupt)
+                        or 'Interface/Icons/INV_Misc_QuestionMark')
+                    row:Show()
+                else
+                    row:Hide()
+                end
+            end
+            irot:SetHeight(20 + math.max(#irotList, 1) * IROT_ROWH + 6)
+        end
+
+        local function IRot_UpdateVisible()
+            -- Standalone mode shows the window on its own (even solo, so a
+            -- non-tank can position it); otherwise it is group-gated.
+            if TMM_Get('standaloneInterrupt') == true then
+                irot:Show()
+            elseif TMM_Get('showInterruptOrder') == true and IsInGroup() then
+                irot:Show()
+            else
+                irot:Hide()
+            end
+        end
+
+        local function IRot_Advance()
+            local n = #irotList
+            if n == 0 then irotPos = 1; return end
+            irotPos = irotPos + 1
+            if irotPos > n then irotPos = 1 end
+        end
+
+        -- The PLAYER'S OWN interrupt cast only. Under Midnight
+        -- addon-disarmament the cast spell of any OTHER unit is a SECRET
+        -- value: the addon may display it but may NOT read or compare it --
+        -- doing so taints and throws ("attempt to compare a secret string
+        -- value"). So rotation cooldowns are tracked ONLY for the player's
+        -- own cast (non-secret) plus addon-comm sync from other TMM users.
+        -- Tracking non-TMM players or NPC followers is NOT possible -- the
+        -- same hard platform wall that removed the range indicator. (§0a)
+        local function IRot_OnUnitCast(unit, spellID)
+            if unit ~= 'player' or not playerInterrupt then return end
+            local castName = C_Spell and C_Spell.GetSpellName
+                             and C_Spell.GetSpellName(spellID)
+            if castName ~= playerInterrupt then return end
+            local e = irotByName[playerName]
+            if e then
+                e.readyAt = GetTime() + (TMM_IROT_CD[e.interrupt] or 15)
+                if irotList[irotPos] == e then IRot_Advance() end
+            end
+            IRot_Send('C')
+        end
+
+        function irot:Refresh()
+            IRot_Rebuild(); IRot_Layout(); IRot_UpdateVisible()
+        end
+        function irot:SendHello() IRot_SendHello() end
+        function irot:Advance()
+            IRot_Advance()
+            self:PrintNext()
+        end
+        function irot:PrintNext()
+            local e = irotList[irotPos]
+            if e then
+                print('|cFF00FFFFTauntMasterMini:|r next to kick -> |cFFFFFF00'
+                    .. e.name .. '|r (' .. e.interrupt .. ')')
+            end
+        end
+        function irot:PrintList()
+            if #irotList == 0 then
+                print('|cFF00FFFFTauntMasterMini:|r no interrupters detected '
+                    .. '(this is a group feature).')
+                return
+            end
+            print('|cFF00FFFFTauntMasterMini -- kick order:|r')
+            for i, e in ipairs(irotList) do
+                print(string.format('  %d. %s (%s)%s', i, e.name, e.interrupt,
+                    i == irotPos and ' |cFFFFFF00<< NEXT|r' or ''))
+            end
+        end
+        function irot:RestorePos()
+            local pos = TauntMasterMiniDBChar and TauntMasterMiniDBChar.interruptOrderPos
+            self:ClearAllPoints()
+            if pos and pos.point then
+                self:SetPoint(pos.point, UIParent, pos.relPoint, pos.x, pos.y)
+            else
+                self:SetPoint('CENTER', UIParent, 'CENTER', 260, 0)
+            end
+        end
+
+        -- Throttled refresh of per-row state text + the NEXT highlight.
+        -- Runs only while the frame is shown (OnUpdate is dormant when
+        -- hidden) and uses only GetTime()/our own numbers.
+        irot:SetScript('OnUpdate', function(self, elapsed)
+            self._t = (self._t or 0) + elapsed
+            if self._t < 0.2 then return end
+            self._t = 0
+            local now = GetTime()
+            for i = 1, IROT_MAXROWS do
+                local row, e = irotRows[i], irotList[i]
+                if e then
+                    row._hl:SetShown(i == irotPos)
+                    local remain = (e.readyAt or 0) - now
+                    if remain > 0 then
+                        row._state:SetText('|cFFFF8800'
+                            .. math.ceil(remain) .. 's|r')
+                    else
+                        row._state:SetText('|cFF33FF33READY|r')
+                    end
+                end
+            end
+        end)
+
+        -- Coordination + own-cast tracking. All §0a-safe: addon messages
+        -- are not secret values and not the protected SendChatMessage; the
+        -- player's own UNIT_SPELLCAST_SUCCEEDED is observable. [Paranoid]
+        if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+            C_ChatInfo.RegisterAddonMessagePrefix(TMM_IROT_PREFIX)
+        end
+        local irotComm = CreateFrame('Frame')
+        irotComm:RegisterEvent('ADDON_LOADED')
+        irotComm:RegisterEvent('CHAT_MSG_ADDON')
+        irotComm:RegisterEvent('GROUP_ROSTER_UPDATE')
+        irotComm:RegisterEvent('PLAYER_ENTERING_WORLD')
+        -- player ONLY: other units' cast data is a secret value (see
+        -- IRot_OnUnitCast). Registering party units would only feed the
+        -- disarmed path.
+        irotComm:RegisterUnitEvent('UNIT_SPELLCAST_SUCCEEDED', 'player')
+        irotComm:SetScript('OnEvent', function(_, event, ...)
+            if event == 'CHAT_MSG_ADDON' then
+                local prefix, text, _, sender = ...
+                if prefix ~= TMM_IROT_PREFIX then return end
+                if text ~= 'H' and text ~= 'C' then return end
+                local nm = IRot_BaseName(sender)
+                if not nm or nm == playerName then return end  -- ignore our echo
+                -- Any TMMIRot message proves the sender runs TMM, so they
+                -- become eligible for the rotation list.
+                if not irotTMM[nm] then
+                    irotTMM[nm] = true
+                    irot:Refresh()
+                end
+                local e = irotByName[nm]
+                if e and text == 'C' then
+                    e.readyAt = GetTime() + (TMM_IROT_CD[e.interrupt] or 15)
+                    if irotList[irotPos] == e then IRot_Advance() end
+                end
+            elseif event == 'UNIT_SPELLCAST_SUCCEEDED' then
+                local unit, _, spellID = ...
+                IRot_OnUnitCast(unit, spellID)
+            elseif event == 'GROUP_ROSTER_UPDATE' then
+                irot:Refresh()
+                IRot_SendHello()
+            elseif event == 'PLAYER_ENTERING_WORLD' then
+                irot:RestorePos()
+                irot:Refresh()
+                IRot_SendHello()
+            elseif event == 'ADDON_LOADED' and ... == addonName then
+                irot:RestorePos()
+                irot:Refresh()
+            end
+        end)
+        header._interruptOrder = irot
+
         header:SetScript('OnEvent', function(self, event, ...)
             if event == 'ADDON_LOADED' and ... == addonName then
                 -- SavedVariables are now restored — this is the FIRST safe
@@ -3374,7 +3757,10 @@ end
 
 TMM_CreateOrInitUI()
 DebugPrint('TauntMasterMini.lua file loaded')
-print('|cFF00FF00TauntMasterMini v7.1.0|r. Type |cFFFFFF00/tm|r for options.')
+local TMM_VERSION = (C_AddOns and C_AddOns.GetAddOnMetadata
+    and C_AddOns.GetAddOnMetadata(addonName, 'Version')) or '?'
+print('|cFF00FF00TauntMasterMini v' .. TMM_VERSION
+    .. '|r. Type |cFFFFFF00/tm|r for options.')
 
 
 
