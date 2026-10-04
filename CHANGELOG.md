@@ -2,6 +2,28 @@
 
 All notable changes to TauntMasterMini will be documented in this file.
 
+## [7.3.0-forever] - Unreleased (WoW: Forever beta)
+
+### Added
+- **WoW: Forever support** - `TauntMasterMini_Camelot.toc` (Interface 16001); detected via `WOW_PROJECT_ID` 18. Every Forever change is gated, retail behaviour is unchanged
+- **Forever class kits** - Paladin: Judgement (taunts only with Seal of Fury), Blessing of Protection, Hammer of Justice in the interrupt slot (stun). Warrior: Taunt, Mocking Blow, Shield Bash. Druid: Growl, Bash, Feral Charge
+- **Requirement tags and notes** - pickers, Options and tooltips show what each tank spell needs (Seal of Fury, Defensive Stance, Bear Form, shield, stun)
+- **Threat % on bars** (TANK / AGGRO / %), **nearest-pull readout** and **loose-mob counter** above the frame - possible on Forever because threat is not a secret value there
+- **Range tint** - bar turns red when the left-click spell cannot reach its target (definite out-of-range only)
+- **Taunt-readiness warning** - Seal of Fury / Righteous Fury / Defensive Stance / Bear Form, only when grouped and tanking
+- **Taunt-failed alert** - flash + chat line with a class backup suggestion when a taunt does not take (checked via threat 0.5s after the cast)
+- **Warrior auto-stance** - click macros swap to the required stance first (`[nostance:2] Defensive Stance; ... Taunt`); toggleable
+- **Alt + right-click a bar toggles Main Tank**; Main Tank counts as a tank for sort, Hide DPS and pull alerts (no dungeon-finder roles on Forever)
+- **Forever** Options tab; hover tooltips on the cooldown indicators; `/tm probe` diagnostic
+
+### Fixed
+- Bare `GetSpecialization()` call errored every tick on Forever (that global does not exist there); spec role now via `C_SpecializationInfo`
+- Spec/trait/CVar events registered defensively so a missing event cannot abort UI creation
+
+### Notes
+- Forever cooldown values for Hammer of Justice, Bash, Blessing of Protection and Feral Charge are vanilla estimates, unverified on Forever
+- Interrupt Rotation (committed separately) is unchanged apart from Forever interrupt names
+
 ## [7.2.0] - 2026-05-21
 
 ### Added

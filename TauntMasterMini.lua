@@ -116,6 +116,41 @@ local function TMM_SpellReq(name)
     return name and TMM_SPELL_REQ[name] or nil
 end
 
+-- §0a helpers. TMM_Clean(v) returns v only when it is a readable (non-secret)
+-- value, else nil, so callers can branch on the result safely. On Forever
+-- threat and spell range are readable; health, cooldowns and (in combat)
+-- auras may not be -- every Forever feature below degrades to "show
+-- nothing" when a value is secret.
+local TMM_isSecret = issecretvalue or function() return false end
+local function TMM_Clean(v)
+    if v ~= nil and TMM_isSecret(v) then return nil end
+    return v
+end
+
+-- True when the player knows the spell (by name).
+local function TMM_PlayerKnows(name)
+    local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(name)
+    if not info or not info.spellID then return false end
+    if IsPlayerSpell then return IsPlayerSpell(info.spellID) and true or false end
+    return true
+end
+
+-- Player buff check: true / false, or nil when unreadable (secret auras in
+-- combat, or no API). The nil comparison happens inside pcall so a secret
+-- return can never throw out here.
+local function TMM_HasBuff(name)
+    if not (C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName) then return nil end
+    local ok, has = pcall(function()
+        return C_UnitAuras.GetAuraDataBySpellName('player', name, 'HELPFUL') ~= nil
+    end)
+    if not ok then return nil end
+    return has
+end
+
+-- Last bar the player clicked (set in PostClick, read by the taunt-failed
+-- alert to know which mob a bar taunt was aimed at). Plain Lua state.
+local TMM_lastBarClick = nil
+
 -- Interrupt Rotation feature: per-class personal interrupt (English class
 -- token -> spell name) and approximate cooldowns. Names only -- cooldown is
 -- ESTIMATED locally from an observed cast + GetTime(), never the secret
@@ -195,6 +230,18 @@ local DEFAULTS = {
     showInterruptOrder = false,  -- shared kick-rotation frame; opt-in
     standaloneInterrupt = false, -- kick window only, tank frame hidden
 }
+
+-- Forever-only feature toggles (Options > Forever tab). Added only on
+-- Forever so retail SavedVariables are unchanged.
+if TMM_IS_FOREVER then
+    DEFAULTS.showThreatPct  = true   -- threat % text on each bar
+    DEFAULTS.showPullLead   = true   -- "Nearest pull: Name 87%" readout
+    DEFAULTS.looseCounter   = true   -- mobs in combat not on you
+    DEFAULTS.rangeTint      = true   -- red tint when left-click spell is out of range
+    DEFAULTS.readinessWarn  = true   -- seal / stance / form warning
+    DEFAULTS.tauntFailAlert = true   -- alert when a taunt does not take
+    DEFAULTS.autoStance     = true   -- Warrior: stance swap in the click macros
+end
 
 -- Forward declarations
 local TMM_CreateOrInitUI
@@ -1718,6 +1765,96 @@ end
 -- throw when an addon branches on them. It is not achievable here. /tm range
 -- remains only as a diagnostic that demonstrates this.
 
+-- Forever extras per bar: threat % and range tint ----------------------------
+-- The mob a member is fighting: their own hostile target, else yours.
+local function TMM_ThreatMobFor(unit)
+    local t = (unit == 'player') and 'target' or (unit .. 'target')
+    if UnitExists(t) and UnitCanAttack('player', t) then return t end
+    if UnitExists('target') and UnitCanAttack('player', 'target') then return 'target' end
+    return nil
+end
+
+local TMM_helpOnly = {}  -- spell name -> true if friendly-only (cached; never changes)
+local function TMM_IsHelpOnly(sp)
+    local v = TMM_helpOnly[sp]
+    if v == nil then
+        v = (C_Spell and C_Spell.IsSpellHelpful and C_Spell.IsSpellHelpful(sp)
+             and not C_Spell.IsSpellHarmful(sp)) and true or false
+        TMM_helpOnly[sp] = v
+    end
+    return v
+end
+
+local function TMM_UpdateForeverExtras(button)
+    local pctFS, tint = button._threatPct, button._rangeTint
+    if not TMM_IS_FOREVER or not pctFS then return end
+
+    -- Test mode: cosmetic sample values so the layout can be tuned solo.
+    if TMM_TestCount > 0 and button._testIndex then
+        if TMM_Get('showThreatPct') ~= false and not TMM_Get('compactMode') then
+            pctFS:SetText(((button._testIndex * 37) % 101) .. '%')
+            pctFS:SetTextColor(1, 1, 1)
+            pctFS:Show()
+        else
+            pctFS:Hide()
+        end
+        if tint then tint:SetShown(TMM_Get('rangeTint') ~= false and button._testIndex % 4 == 0) end
+        return
+    end
+
+    local unit = button:GetAttribute('unit')
+    if not unit or not UnitExists(unit) then
+        pctFS:Hide(); if tint then tint:Hide() end
+        return
+    end
+    local mob = TMM_ThreatMobFor(unit)
+
+    -- Threat % (scaled: 100% = this member pulls the mob off its tank).
+    local shown = false
+    if mob and TMM_Get('showThreatPct') ~= false and not TMM_Get('compactMode')
+       and UnitAffectingCombat(unit) then
+        local ok, isTanking, _, scaled = pcall(UnitDetailedThreatSituation, unit, mob)
+        if ok then
+            isTanking, scaled = TMM_Clean(isTanking), TMM_Clean(scaled)
+            if isTanking then
+                if TMM_IsPlayer(unit) then
+                    pctFS:SetText('TANK'); pctFS:SetTextColor(0.3, 1, 0.3)
+                else
+                    pctFS:SetText('AGGRO'); pctFS:SetTextColor(1, 0.2, 0.2)
+                end
+                shown = true
+            elseif scaled and scaled > 0 then
+                local p = math.floor(scaled + 0.5)
+                pctFS:SetText(p .. '%')
+                if p >= 90 then pctFS:SetTextColor(1, 0.2, 0.2)
+                elseif p >= 70 then pctFS:SetTextColor(1, 0.6, 0.1)
+                else pctFS:SetTextColor(1, 1, 1) end
+                shown = true
+            end
+        end
+    end
+    pctFS:SetShown(shown)
+
+    -- Range tint: red when the left-click spell cannot reach its target
+    -- (the member for friendly spells, their mob for hostile ones). Only a
+    -- definite false tints; nil/secret means "unknown" and shows nothing.
+    if tint then
+        local on = false
+        if TMM_Get('rangeTint') ~= false and C_Spell and C_Spell.IsSpellInRange then
+            local sp = TMM_GetLeftSpell()
+            if sp == '' then sp = TMM_GetTauntSpell() or '' end
+            if sp ~= '' then
+                local tgt = TMM_IsHelpOnly(sp) and unit or mob
+                if tgt then
+                    local ok, r = pcall(C_Spell.IsSpellInRange, sp, tgt)
+                    if ok and TMM_Clean(r) == false then on = true end
+                end
+            end
+        end
+        tint:SetShown(on)
+    end
+end
+
 -- Throttle OnUpdate to ~10 fps to reduce CPU overhead
 local UPDATE_THROTTLE = 0.1
 
@@ -1729,6 +1866,7 @@ function TauntMasterMini_Button_OnUpdate(self, elapsed)
     TauntMasterMini_UpdateThreat(self)
     TauntMasterMini_UpdateHealth(self)
     TauntMasterMini_UpdateIcons(self)
+    TMM_UpdateForeverExtras(self)
 
     -- Pulse threat border alpha when flash is active
     if self._threatFlash and self._threatBorder then
@@ -1785,6 +1923,20 @@ local function TMM_CreateUnitButton(index)
     label:SetJustifyV('MIDDLE')
     label:SetText('-')
     btn.name = label
+
+    -- Forever extras (created always, only driven on Forever): threat %
+    -- text and an out-of-range tint. Plain regions; no secure code.
+    local pct = btn:CreateFontString(name .. '_ThreatPct', 'OVERLAY')
+    pct:SetFont('Fonts\\FRIZQT__.TTF', 9, 'OUTLINE')
+    pct:SetPoint('BOTTOMRIGHT', btn, 'BOTTOMRIGHT', -2, 1)
+    pct:SetJustifyH('RIGHT')
+    pct:Hide()
+    btn._threatPct = pct
+    local tint = hb:CreateTexture(name .. '_RangeTint', 'OVERLAY')
+    tint:SetAllPoints(hb)
+    tint:SetColorTexture(0.8, 0, 0, 0.45)
+    tint:Hide()
+    btn._rangeTint = tint
 
     -- Role icon to the right of the bar, sized to match bar height
     -- Use a child Frame with its own texture so it renders independently
@@ -1907,6 +2059,25 @@ local function TMM_PlayCastFlash(btn)
     btn._castFlashAnim:Play()
 end
 
+-- Warrior (Forever): prefix a stance swap so one click puts you in the
+-- right stance and the next click casts. '/cast [nostance:2] Defensive
+-- Stance; [@x] Taunt' -- standard macro conditionals, built out of combat.
+local TMM_WARRIOR_STANCE = {
+    ['Taunt']        = { cond = 'nostance:2',   stance = 'Defensive Stance' },
+    ['Mocking Blow'] = { cond = 'nostance:1',   stance = 'Battle Stance' },
+    ['Shield Bash']  = { cond = 'nostance:1/2', stance = 'Defensive Stance' },
+    ['Pummel']       = { cond = 'nostance:3',   stance = 'Berserker Stance' },
+}
+local function TMM_WrapStance(spell, macro)
+    if not TMM_IS_FOREVER or not spell or not macro or macro == '' then return macro end
+    if TMM_Get('autoStance') == false then return macro end
+    if select(2, UnitClass('player')) ~= 'WARRIOR' then return macro end
+    local st = TMM_WARRIOR_STANCE[spell]
+    if not st or not TMM_PlayerKnows(st.stance) then return macro end
+    if macro:sub(1, 6) ~= '/cast ' then return macro end
+    return '/cast [' .. st.cond .. '] ' .. st.stance .. '; ' .. macro:sub(7)
+end
+
 TMM_ConfigureClickAction = function(btn, unit)
     local click = btn._clickOverlay
     if not click then return end
@@ -1965,6 +2136,8 @@ TMM_ConfigureClickAction = function(btn, unit)
 
     local leftMacro = buildMacro(unit, TMM_GetLeftSpell())
     local rightMacro = buildMacro(unit, TMM_GetRightSpell())
+    leftMacro  = TMM_WrapStance(clean(TMM_GetLeftSpell()) or TMM_GetTauntSpell(), leftMacro)
+    rightMacro = TMM_WrapStance(clean(TMM_GetRightSpell()) or TMM_GetTauntSpell(), rightMacro)
 
     click:SetAttribute('type', 'macro')
     click:SetAttribute('type1', 'macro')
@@ -1972,6 +2145,15 @@ TMM_ConfigureClickAction = function(btn, unit)
     click:SetAttribute('macrotext', leftMacro)
     click:SetAttribute('macrotext1', leftMacro)
     click:SetAttribute('macrotext2', rightMacro)
+
+    -- Forever: Alt + right-click toggles the raid Main Tank assignment on
+    -- this member (Blizzard secure "maintank" action; raid leader/assist
+    -- only). Classic groups mark tanks this way; TMM reads it as TANK.
+    if TMM_IS_FOREVER then
+        click:SetAttribute('alt-type2', 'maintank')
+        click:SetAttribute('alt-action2', 'toggle')
+        click:SetAttribute('alt-unit2', unit)
+    end
 
     if DEBUG then
         click:SetScript('PreClick', function(_, which)
@@ -1982,11 +2164,13 @@ TMM_ConfigureClickAction = function(btn, unit)
         end)
         click:SetScript('PostClick', function(_, which)
             print(string.format('TMM PostClick %s executed', which))
+            TMM_lastBarClick = { unit = unit, t = GetTime() }
             TMM_PlayCastFlash(btn)
         end)
     else
         click:SetScript('PreClick', nil)
         click:SetScript('PostClick', function()
+            TMM_lastBarClick = { unit = unit, t = GetTime() }
             TMM_PlayCastFlash(btn)
         end)
     end
@@ -2332,6 +2516,94 @@ local function TMM_HandlePullEvent(unit)
     if TMM_Get('pullAlertPartyChat') then
         TMM_RaidWarn(name .. ' pulled aggro!')
     end
+end
+
+-- Forever readouts -----------------------------------------------------------
+
+-- Highest scaled threat on your target among other group members.
+local function TMM_ComputePullLead()
+    if not (UnitExists('target') and UnitCanAttack('player', 'target')) then return nil end
+    local bestName, best, bestTanking
+    local function consider(u)
+        if UnitExists(u) and not TMM_IsPlayer(u) then
+            local ok, tanking, _, scaled = pcall(UnitDetailedThreatSituation, u, 'target')
+            if ok then
+                tanking, scaled = TMM_Clean(tanking), TMM_Clean(scaled)
+                if tanking then scaled = 100 end
+                if scaled and (not best or scaled > best) then
+                    best, bestName, bestTanking = scaled, UnitName(u), tanking
+                end
+            end
+        end
+    end
+    if IsInRaid() then
+        for i = 1, GetNumGroupMembers() do consider('raid' .. i) end
+    else
+        for i = 1, 4 do consider('party' .. i) end
+    end
+    return bestName, best, bestTanking
+end
+
+-- Mobs in combat, attacking a group member other than you, that you are
+-- not tanking. Needs enemy nameplates shown (that is where mobs are listed).
+local function TMM_CountLoose()
+    local n = 0
+    for i = 1, 40 do
+        local np = 'nameplate' .. i
+        if UnitExists(np) then
+            local ok, loose = pcall(function()
+                if not UnitCanAttack('player', np) or not UnitAffectingCombat(np) then return false end
+                local tt = np .. 'target'
+                if not UnitExists(tt) or TMM_IsPlayer(tt) then return false end
+                if not (UnitInParty(tt) or UnitInRaid(tt)) then return false end
+                local st = UnitThreatSituation('player', np)
+                return not (st and st >= 2)
+            end)
+            if ok and loose == true then n = n + 1 end
+        end
+    end
+    return n
+end
+
+-- Active stance/form name, or nil.
+local function TMM_ActiveFormName()
+    local idx = GetShapeshiftForm and GetShapeshiftForm()
+    if not idx or idx == 0 then return nil end
+    local _, _, _, spellID = GetShapeshiftFormInfo(idx)
+    return spellID and C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
+end
+
+-- What stops your taunt working right now, or nil. Only nags a player who
+-- is tanking (tank role / Main Tank / tank spec / class taunt on left-click),
+-- only while grouped, and stance/seal checks only when engaged.
+local function TMM_ReadinessProblem()
+    if not IsInGroup() or UnitIsDeadOrGhost('player') then return nil end
+    local tanking = TMM_GetUnitRole('player') == 'TANK' or TMM_IsTankSpec()
+        or (TMM_GetTauntSpell() and TMM_GetLeftSpell() == TMM_GetTauntSpell())
+    if not tanking then return nil end
+    local engaged = UnitAffectingCombat('player')
+        or (UnitExists('target') and UnitCanAttack('player', 'target'))
+    local class = select(2, UnitClass('player'))
+    if class == 'PALADIN' then
+        if TMM_PlayerKnows('Righteous Fury') and TMM_HasBuff('Righteous Fury') == false then
+            return 'Righteous Fury is off'
+        end
+        if engaged and TMM_PlayerKnows('Seal of Fury') and TMM_HasBuff('Seal of Fury') == false then
+            return "Seal of Fury not active - Judgement won't taunt"
+        end
+    elseif class == 'WARRIOR' then
+        if engaged and TMM_PlayerKnows('Defensive Stance')
+           and TMM_ActiveFormName() ~= 'Defensive Stance' then
+            return 'Not in Defensive Stance - Taunt unavailable'
+        end
+    elseif class == 'DRUID' then
+        local f = TMM_ActiveFormName()
+        if engaged and (TMM_PlayerKnows('Bear Form') or TMM_PlayerKnows('Dire Bear Form'))
+           and f ~= 'Bear Form' and f ~= 'Dire Bear Form' then
+            return 'Not in Bear Form - Growl unavailable'
+        end
+    end
+    return nil
 end
 
 -- Options UI creation ------------------------------------------------------
@@ -2946,6 +3218,42 @@ TMM_CreateOrInitUI = function()
             TMM_Set('pullAlertSound', val)
         end)
 
+        -- Forever tab (Forever client only): the features that rely on
+        -- threat/range being readable there.
+        if TMM_IS_FOREVER then
+            local pageForever = NewPage('Forever')
+            curPage = pageForever
+            local fh = pageForever:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+            fh:SetPoint('TOPLEFT', 16, curPage._y)
+            fh:SetText('|cFFFF9900WoW Forever extras|r')
+            curPage._y = curPage._y - 24
+            local function rebuildLater()
+                if InCombatLockdown() then
+                    TauntMasterMini_Header._tmmPendingRebuild = 1
+                else
+                    TMM_RebuildRoster()
+                end
+            end
+            local function opt(label, key, after)
+                AddCheck(label, function() return TMM_Get(key) ~= false end,
+                    function(v) TMM_Set(key, v and true or false); if after then after() end end)
+            end
+            opt('Threat % on bars  (100% = they pull it)', 'showThreatPct')
+            opt('Nearest-pull readout above the frame', 'showPullLead')
+            opt('Loose-mob counter  (needs enemy nameplates on)', 'looseCounter')
+            opt('Range tint  (red when left-click spell is out of range)', 'rangeTint')
+            opt('Taunt-readiness warning  (seal / stance / form)', 'readinessWarn')
+            opt('Taunt-failed alert', 'tauntFailAlert')
+            opt('Warrior: auto-switch stance in click macros', 'autoStance', rebuildLater)
+            local mtNote = pageForever:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+            mtNote:SetPoint('TOPLEFT', 16, curPage._y - 6)
+            mtNote:SetPoint('RIGHT', pageForever, 'RIGHT', -12, 0)
+            mtNote:SetJustifyH('LEFT')
+            mtNote:SetText('|cFFFFD200Alt + right-click a bar toggles Main Tank on that member '
+                .. '(raid leader or assist). Main Tanks count as tanks for sorting, '
+                .. 'Hide DPS and pull alerts.|r')
+        end
+
         -- Show the Layout tab by default
         SetPage(pageLayout)
 
@@ -3182,6 +3490,102 @@ TMM_CreateOrInitUI = function()
         end)
         header._cdTracker = cdTracker
 
+        -- Forever status lines above the frame: line 1 = nearest pull +
+        -- loose-mob count, line 2 = pulsing taunt-readiness warning. Plain
+        -- frame; everything read is secrecy-checked and simply hides when
+        -- unreadable (§0a).
+        if TMM_IS_FOREVER then
+            local info = CreateFrame('Frame', 'TMMForeverInfo', header)
+            info:SetSize(280, 32)
+            info:SetPoint('BOTTOM', header, 'TOP', 0, skullSz + 6)
+            local l1 = info:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
+            l1:SetPoint('BOTTOM', info, 'BOTTOM', 0, 0)
+            local l2 = info:CreateFontString(nil, 'OVERLAY', 'GameFontNormal')
+            l2:SetPoint('BOTTOM', l1, 'TOP', 0, 2)
+            info._l1, info._l2 = l1, l2
+            info:SetScript('OnUpdate', function(self, e)
+                self._t = (self._t or 0) + e
+                if self._t < 0.25 then return end
+                self._t = 0
+                local parts = {}
+                if TMM_TestCount > 0 then
+                    if TMM_Get('showPullLead') ~= false then parts[#parts + 1] = '|cFFFF9933Nearest pull: Test 2 87%|r' end
+                    if TMM_Get('looseCounter') ~= false then parts[#parts + 1] = '|cFFFF5555Loose: 2|r' end
+                else
+                    local inCombat = UnitAffectingCombat('player')
+                    if inCombat and TMM_Get('showPullLead') ~= false then
+                        local nm, p, tk = TMM_ComputePullLead()
+                        if nm and p and p > 0 then
+                            if tk then
+                                parts[#parts + 1] = '|cFFFF3333' .. nm .. ' HAS AGGRO|r'
+                            else
+                                local col = (p >= 90 and 'FF3333') or (p >= 70 and 'FF9933') or 'FFFFFF'
+                                parts[#parts + 1] = string.format('|cFF%sNearest pull: %s %d%%|r',
+                                    col, nm, math.floor(p + 0.5))
+                            end
+                        end
+                    end
+                    if inCombat and TMM_Get('looseCounter') ~= false then
+                        local n = TMM_CountLoose()
+                        if n > 0 then parts[#parts + 1] = string.format('|cFFFF5555Loose: %d|r', n) end
+                    end
+                end
+                l1:SetText(table.concat(parts, '    '))
+                local warn = TMM_Get('readinessWarn') ~= false and TMM_ReadinessProblem()
+                if warn then
+                    l2:SetText('|cFFFF3333' .. warn .. '|r')
+                    l2:SetAlpha(0.55 + 0.45 * math.abs(math.sin(GetTime() * 3)))
+                else
+                    l2:SetText('')
+                end
+            end)
+            header._foreverInfo = info
+
+            -- Taunt-failed alert: 0.5s after a taunt cast, check whether you
+            -- now have the mob (threat status >= 2). The combat log is
+            -- restricted on Forever, so threat is the evidence. Judgement
+            -- only counts when Seal of Fury was up (otherwise it is just a
+            -- damage spell).
+            local TMM_TAUNTS = { ['Taunt'] = true, ['Growl'] = true,
+                                 ['Mocking Blow'] = true, ['Judgement'] = true }
+            local TMM_BACKUP = { WARRIOR = 'Mocking Blow (Battle Stance)',
+                                 DRUID = 'Challenging Roar', PALADIN = 'Swift Judgement' }
+            local tauntWatch = CreateFrame('Frame')
+            tauntWatch:RegisterUnitEvent('UNIT_SPELLCAST_SUCCEEDED', 'player')
+            tauntWatch:SetScript('OnEvent', function(_, _, _, _, spellID)
+                if TMM_Get('tauntFailAlert') == false or not IsInGroup() then return end
+                local nm = C_Spell and C_Spell.GetSpellName and C_Spell.GetSpellName(spellID)
+                if not nm or not TMM_TAUNTS[nm] then return end
+                if nm == 'Judgement' and TMM_HasBuff('Seal of Fury') ~= true then return end
+                local tok = 'target'
+                local lc = TMM_lastBarClick
+                if lc and (GetTime() - lc.t) < 0.6 and lc.unit ~= 'player' then
+                    tok = lc.unit .. 'target'
+                end
+                local okG, guid = pcall(UnitGUID, tok)
+                guid = okG and TMM_Clean(guid)
+                if not guid then return end
+                local mobName = UnitName(tok) or 'target'
+                C_Timer.After(0.5, function()
+                    local found
+                    for _, t in ipairs({ tok, 'target', 'targettarget', 'focus' }) do
+                        local ok, g = pcall(UnitGUID, t)
+                        if ok and TMM_Clean(g) == guid then found = t break end
+                    end
+                    if not found then return end  -- lost track of it; stay quiet
+                    local ok, st = pcall(UnitThreatSituation, 'player', found)
+                    st = ok and TMM_Clean(st)
+                    if type(st) ~= 'number' or st >= 2 then return end
+                    local backup = TMM_BACKUP[select(2, UnitClass('player'))]
+                    TMM_ShowPullFlash(mobName, '|cFFFF4444>> ' .. nm .. ' FAILED <<|r\n|cFFFFFFFF'
+                        .. mobName .. '|r')
+                    print('|cFFFF4400TauntMasterMini:|r ' .. nm .. ' did not take on |cFFFFFFFF'
+                        .. mobName .. '|r' .. (backup and (' - backup: ' .. backup) or ''))
+                end)
+            end)
+            header._tauntWatch = tauntWatch
+        end
+
         -- Interrupt slot: a secure one-button cast of the configured
         -- interrupt on your current target. macrotext is set ONLY from
         -- clean, combat-guarded code (header._configureInterrupt, driven by
@@ -3244,7 +3648,7 @@ TMM_CreateOrInitUI = function()
                 or 'Interface/Icons/INV_Misc_QuestionMark')
             if InCombatLockdown() then return end
             if sp ~= '' then
-                intBtn:SetAttribute('macrotext', '/cast [@target,harm,nodead] ' .. sp)
+                intBtn:SetAttribute('macrotext', TMM_WrapStance(sp, '/cast [@target,harm,nodead] ' .. sp))
             else
                 intBtn:SetAttribute('macrotext', '')
             end
@@ -3348,8 +3752,8 @@ TMM_CreateOrInitUI = function()
             focusTauntBtn._iconTex:SetTexture(icon or 'Interface/Icons/INV_Misc_QuestionMark')
             if InCombatLockdown() then return end
             if ts then
-                tgtTauntBtn:SetAttribute('macrotext', '/cast [@target,harm,nodead] ' .. ts)
-                focusTauntBtn:SetAttribute('macrotext', '/cast [@focus,harm,nodead] ' .. ts)
+                tgtTauntBtn:SetAttribute('macrotext', TMM_WrapStance(ts, '/cast [@target,harm,nodead] ' .. ts))
+                focusTauntBtn:SetAttribute('macrotext', TMM_WrapStance(ts, '/cast [@focus,harm,nodead] ' .. ts))
             else
                 tgtTauntBtn:SetAttribute('macrotext', '')
                 focusTauntBtn:SetAttribute('macrotext', '')
