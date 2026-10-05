@@ -2,6 +2,11 @@
 
 All notable changes to TauntMasterMini will be documented in this file.
 
+## [7.3.0-forever.2] - 2026-10-05 (WoW: Forever beta)
+
+### Changed
+- Text-only tidy of comments, chat strings and docs (plain ASCII punctuation). No behaviour change
+
 ## [7.3.0-forever.1] - 2026-10-05 (WoW: Forever beta)
 
 ### Added
@@ -27,84 +32,84 @@ All notable changes to TauntMasterMini will be documented in this file.
 ## [7.2.0] - 2026-05-21
 
 ### Added
-- **Class interrupt always available in the Left/Right Click pickers** — your class interrupt is now offered in the **Left Click Spell** and **Right Click Spell** dropdowns, not just the Interrupt Spell picker, so it can be bound to a bar click even when it is not on an action bar. Sourced per class from the class kit and de-duplicated against the spellbook scan — the same fallback pattern already used for the class taunt
+- **Class interrupt always available in the Left/Right Click pickers** - your class interrupt is now offered in the **Left Click Spell** and **Right Click Spell** dropdowns, not just the Interrupt Spell picker, so it can be bound to a bar click even when it is not on an action bar. Sourced per class from the class kit and de-duplicated against the spellbook scan - the same fallback pattern already used for the class taunt
 
 ### Changed
-- **Interrupt Spell picker greys out when the interrupt button is off** — unticking **Show Interrupt Button** (Display tab) now greys the Interrupt Spell row on the Spells tab (button, icon and label) and shows a note explaining it is disabled; a greyed picker cannot be opened. Re-ticking restores it. The state also reflects correctly after **Reset Defaults** and on login
+- **Interrupt Spell picker greys out when the interrupt button is off** - unticking **Show Interrupt Button** (Display tab) now greys the Interrupt Spell row on the Spells tab (button, icon and label) and shows a note explaining it is disabled; a greyed picker cannot be opened. Re-ticking restores it. The state also reflects correctly after **Reset Defaults** and on login
 
 ### Notes
-- Both changes are display/config-only (spell *names* fed to a `/cast` macro built out of combat). No secret-value read, no taint, no secure-frame mutation — no §0a concern
+- Both changes are display/config-only (spell *names* fed to a `/cast` macro built out of combat). No secret-value read, no taint, no secure-frame mutation - no secret-value concern
 
 ## [7.1.0] - 2026-05-19
 
 ### Added
-- **Smart per-class starter kit** — a fresh character or "Reset Defaults" now gets left = class taunt, right = a useful class spell, interrupt = the class interrupt. Defaults are **validated against the character's actually-known spells** (spellbook + active talents), so it never sets a spell the spec/talents don't have (no more "?" placeholders, no defaulting to an untalented spell)
-- **Not-in-tanking-spec notice** — one-time chat message on login / spec change plus a yellow banner on the Options → Spells tab when the current spec is not a tank spec
+- **Smart per-class starter kit** - a fresh character or "Reset Defaults" now gets left = class taunt, right = a useful class spell, interrupt = the class interrupt. Defaults are **validated against the character's actually-known spells** (spellbook + active talents), so it never sets a spell the spec/talents don't have (no more "?" placeholders, no defaulting to an untalented spell)
+- **Not-in-tanking-spec notice** - one-time chat message on login / spec change plus a yellow banner on the Options -> Spells tab when the current spec is not a tank spec
 
 ### Changed
-- Options window widened (380 → 460) so longer checkbox labels no longer overflow
+- Options window widened (380 -> 460) so longer checkbox labels no longer overflow
 
 ### Removed
-- **Out-of-range indicator** — removed entirely (older versions had a red overlay). It is **not achievable under Midnight (12.0) addon-disarmament**: `C_Spell.IsSpellInRange` returns `nil` for valid spells/IDs, and `UnitInRange` returns *secret booleans* that throw when the addon branches on them ("secret boolean value, while execution tainted"). This is a permanent platform limitation. `/tm range` is kept as a diagnostic that demonstrates it
+- **Out-of-range indicator** - removed entirely (older versions had a red overlay). It is **not achievable under Midnight (12.0) addon-disarmament**: `C_Spell.IsSpellInRange` returns `nil` for valid spells/IDs, and `UnitInRange` returns *secret booleans* that throw when the addon branches on them ("secret boolean value, while execution tainted"). This is a permanent platform limitation. `/tm range` is kept as a diagnostic that demonstrates it
 
 ### Fixed
-- **GUI buttons dead when WoW's `ActionButtonUseKeyDown` is enabled** (e.g. GSE users) — all secure buttons were registered for `AnyUp` only, so when that CVar makes the secure click system fire on the press edge the buttons did nothing. They now register for the click edge that matches the current CVar and re-sync on `CVAR_UPDATE` (combat-deferred). The global CVar is **not** changed (changing it from addon Lua is a known action-bar taint vector)
-- **Aggro not shown when "Class colours" was enabled** — the class-colour branch returned before the threat path ran, so bars stayed class-coloured even on a pull. Class colour is now the no-aggro *baseline* only; threat still overrides it to yellow (gaining/losing) and red (full aggro) with the border flash, exactly as in green mode
-- **Spells/icons inert until a manual `/reload` on a cold login** — on a fresh session the spellbook isn't populated when `ADDON_LOADED` fires, so secure macrotext was set to `''` and icons to the "?" placeholder. The secure buttons + icons now reconfigure on `SPELLS_CHANGED` (combat-guarded; deferred to `PLAYER_REGEN_ENABLED` in combat)
-- **Spell icons stuck as "?" for the whole session** — removed a sticky negative icon-cache entry that survived until `/reload`
-- **Options → Spells panel icons** not refreshing once spell data became available
-- **"Reset Defaults" not truly resetting** — class-specific spell keys were being migrated from the shared account-wide DB, cross-contaminating classes (a Death Knight's spells appearing on a Demon Hunter) and surviving Reset. These keys are now per-character only, with a one-time scrub of the stale account-wide copies
-- **"(None - Clear)" did not stick** — the kit re-populated a cleared spell on the next rebuild; an explicit clear (`''`) is now distinguished from "never set" (`nil`) and preserved
-- **Right-click defaulting to the taunt (duplicate of left-click)** when the kit utility wasn't known — utility/interrupt are now priority lists; the first *known* entry is chosen, with no taunt fallback for right-click
+- **GUI buttons dead when WoW's `ActionButtonUseKeyDown` is enabled** (e.g. GSE users) - all secure buttons were registered for `AnyUp` only, so when that CVar makes the secure click system fire on the press edge the buttons did nothing. They now register for the click edge that matches the current CVar and re-sync on `CVAR_UPDATE` (combat-deferred). The global CVar is **not** changed (changing it from addon Lua is a known action-bar taint vector)
+- **Aggro not shown when "Class colours" was enabled** - the class-colour branch returned before the threat path ran, so bars stayed class-coloured even on a pull. Class colour is now the no-aggro *baseline* only; threat still overrides it to yellow (gaining/losing) and red (full aggro) with the border flash, exactly as in green mode
+- **Spells/icons inert until a manual `/reload` on a cold login** - on a fresh session the spellbook isn't populated when `ADDON_LOADED` fires, so secure macrotext was set to `''` and icons to the "?" placeholder. The secure buttons + icons now reconfigure on `SPELLS_CHANGED` (combat-guarded; deferred to `PLAYER_REGEN_ENABLED` in combat)
+- **Spell icons stuck as "?" for the whole session** - removed a sticky negative icon-cache entry that survived until `/reload`
+- **Options -> Spells panel icons** not refreshing once spell data became available
+- **"Reset Defaults" not truly resetting** - class-specific spell keys were being migrated from the shared account-wide DB, cross-contaminating classes (a Death Knight's spells appearing on a Demon Hunter) and surviving Reset. These keys are now per-character only, with a one-time scrub of the stale account-wide copies
+- **"(None - Clear)" did not stick** - the kit re-populated a cleared spell on the next rebuild; an explicit clear (`''`) is now distinguished from "never set" (`nil`) and preserved
+- **Right-click defaulting to the taunt (duplicate of left-click)** when the kit utility wasn't known - utility/interrupt are now priority lists; the first *known* entry is chosen, with no taunt fallback for right-click
 - **Solo target bar showed meaningless black class/role squares** for NPC/mob targets; scoped so NPC Follower-Dungeon party members keep their class & role icons
 - Options checkbox labels overflowed the window
 
 ### Notes
-- Spell-availability checks (smart kit) remain **display/config-only** and degrade gracefully where a value is opaque under Midnight addon-disarmament (§0a); none gate a secure cast. Range checks were found to be fully disarmed and the feature was removed (see Removed)
+- Spell-availability checks (smart kit) remain **display/config-only** and degrade gracefully where a value is opaque under Midnight addon-disarmament (secret-value rule); none gate a secure cast. Range checks were found to be fully disarmed and the feature was removed (see Removed)
 
 ## [7.0.0] - 2026-05-18
 
 ### Added
-- **Test/config mode** — `/tm test [N]` or a Layout-tab button spawns 5/10/20 dummy bars solo (randomised class/role) for laying out the frame without a group
+- **Test/config mode** - `/tm test [N]` or a Layout-tab button spawns 5/10/20 dummy bars solo (randomised class/role) for laying out the frame without a group
 - **Whole-frame Scale & Opacity** sliders
-- **Bar sort options** — Group order / Tanks first / By role / By name
-- **Compact (icon-only) mode** — bars collapse to threat-coloured squares
+- **Bar sort options** - Group order / Tanks first / By role / By name
+- **Compact (icon-only) mode** - bars collapse to threat-coloured squares
 - **Cast-feedback flash** on bar click (toggleable)
 - **Pull-alert sound cue** (toggleable)
-- **Tabbed options window** (Layout / Display / Spells / Alerts) — fixed-size, always fits on screen
+- **Tabbed options window** (Layout / Display / Spells / Alerts) - fixed-size, always fits on screen
 - **Dual spell cooldown indicators** for the left- and right-click spells (event-based, no secret-value reads)
-- **Interrupt slot** — configurable interrupt cast on your target via a secure button, size slider, and an interrupt-only spell picker
-- **Raid-marker bar** — all 8 markers below the frame, each a place/remove toggle with bright/dim feedback (replaces the old skull button)
+- **Interrupt slot** - configurable interrupt cast on your target via a secure button, size slider, and an interrupt-only spell picker
+- **Raid-marker bar** - all 8 markers below the frame, each a place/remove toggle with bright/dim feedback (replaces the old skull button)
 - **Target-taunt / Focus-taunt** secure buttons
-- **Blizzard Edit Mode integration** — frame is movable in Edit Mode, restores your saved lock state on exit
-- **Solo/world mode** — show a live "target" bar (threat/health) when ungrouped
-- Auto-aligning top control row — only the enabled icons, packed with no gaps, centred above the bars
+- **Blizzard Edit Mode integration** - frame is movable in Edit Mode, restores your saved lock state on exit
+- **Solo/world mode** - show a live "target" bar (threat/health) when ungrouped
+- Auto-aligning top control row - only the enabled icons, packed with no gaps, centred above the bars
 
 ### Changed
-- **Removed the standalone top-centre skull button** — raid markers now live in the bottom marker bar (default on); "Skull Marker Size" slider is now "Marker Button Size"
+- **Removed the standalone top-centre skull button** - raid markers now live in the bottom marker bar (default on); "Skull Marker Size" slider is now "Marker Button Size"
 - Options window restructured into tabs (no longer a single off-screen list)
 
 ### Fixed
-- **Pull-alert `ADDON_ACTION_BLOCKED`** — the optional pull announce called the protected `SendChatMessage` from a tainted combat event handler; replaced with a local on-screen raid-warning banner (also aligns with Midnight addon-disarmament)
-- **Raid-marker bar now behaves as a radio group** — applying a marker while another was still highlighted left both buttons lit even though a unit can only carry one marker. The OnClick restricted snippet now clears every sibling's secure state + macrotext (untainted, combat-legal) and PostClick resyncs the whole bar's brightness, so only the active marker stays highlighted
-- **`SetFrameRef` nil-call on load** — the radio-group sibling refs needed `SetFrameRef`, which plain `SecureActionButtonTemplate` does not provide; marker buttons now also mix in `SecureHandlerBaseTemplate` so the method exists
+- **Pull-alert `ADDON_ACTION_BLOCKED`** - the optional pull announce called the protected `SendChatMessage` from a tainted combat event handler; replaced with a local on-screen raid-warning banner (also aligns with Midnight addon-disarmament)
+- **Raid-marker bar now behaves as a radio group** - applying a marker while another was still highlighted left both buttons lit even though a unit can only carry one marker. The OnClick restricted snippet now clears every sibling's secure state + macrotext (untainted, combat-legal) and PostClick resyncs the whole bar's brightness, so only the active marker stays highlighted
+- **`SetFrameRef` nil-call on load** - the radio-group sibling refs needed `SetFrameRef`, which plain `SecureActionButtonTemplate` does not provide; marker buttons now also mix in `SecureHandlerBaseTemplate` so the method exists
 
 ### Notes
-- Keybindings were attempted but reverted — `Bindings.xml` would not register on the test client
+- Keybindings were attempted but reverted - `Bindings.xml` would not register on the test client
 - Interface version unchanged (`120000`); not part of this batch
 
 ## [6.7.0] - 2026-05-05
 
 ### Added
-- **Role icons for every player** — Tank / Healer / DPS icon shown on every bar (not just tanks) using the LFG role texture sheet; falls back to DPS when role is unassigned and infers Tank/Healer from spec where possible
+- **Role icons for every player** - Tank / Healer / DPS icon shown on every bar (not just tanks) using the LFG role texture sheet; falls back to DPS when role is unassigned and infers Tank/Healer from spec where possible
 
 ### Fixed
-- **"Show Self" ignored when solo** — Solo branch unconditionally added the player to the unit list; now respects the toggle, so unticking Show Self while solo correctly hides your bar
-- **Removed friendly-target heal icon** — The small green-outlined icon that appeared on the right of bars when a unit was targeting a friendly was confusing (looked like a stray green square); fully removed along with its texture file (`tm_friendly_icon8.tga`)
-- **Role icons showing stale data after roster change** — Class and role icons are now reset before each rebuild and explicitly hidden on excess buttons when the roster shrinks (e.g. when Show Self is toggled off)
-- **Taint error from boolean test on tainted flag** — Pending-rebuild flag is now compared against `nil` rather than truth-tested, avoiding a taint propagation path when the flag carried tainted state
-- **`UnitIsUnit` taint** — All `UnitIsUnit` calls replaced with GUID comparison (`UnitGUID(a) == UnitGUID(b)`), which is taint-safe in protected contexts
-- **Role icon texture issues** — Multiple iterations (numeric IDs → atlas → atlas+pcall → direct LFG sheet) settled on using the LFG texture sheet directly with manual `SetTexCoord`, the most reliable path across UI states
+- **"Show Self" ignored when solo** - Solo branch unconditionally added the player to the unit list; now respects the toggle, so unticking Show Self while solo correctly hides your bar
+- **Removed friendly-target heal icon** - The small green-outlined icon that appeared on the right of bars when a unit was targeting a friendly was confusing (looked like a stray green square); fully removed along with its texture file (`tm_friendly_icon8.tga`)
+- **Role icons showing stale data after roster change** - Class and role icons are now reset before each rebuild and explicitly hidden on excess buttons when the roster shrinks (e.g. when Show Self is toggled off)
+- **Taint error from boolean test on tainted flag** - Pending-rebuild flag is now compared against `nil` rather than truth-tested, avoiding a taint propagation path when the flag carried tainted state
+- **`UnitIsUnit` taint** - All `UnitIsUnit` calls replaced with GUID comparison (`UnitGUID(a) == UnitGUID(b)`), which is taint-safe in protected contexts
+- **Role icon texture issues** - Multiple iterations (numeric IDs -> atlas -> atlas+pcall -> direct LFG sheet) settled on using the LFG texture sheet directly with manual `SetTexCoord`, the most reliable path across UI states
 
 ### Technical
 - `TMM_IsPlayer` is forward-declared so `OnShow` handlers can reference it during early-load
@@ -115,17 +120,17 @@ All notable changes to TauntMasterMini will be documented in this file.
 ## [6.6.0] - 2026-04-10
 
 ### Added
-- **Show Self option** — New "Show Self" checkbox in Options to hide your own button from the group list; useful for tanks who don't need a button to taunt themselves
+- **Show Self option** - New "Show Self" checkbox in Options to hide your own button from the group list; useful for tanks who don't need a button to taunt themselves
 - Session-only setting: always defaults to shown on every `/reload` for maximum reliability; untick in Options to hide for the current session
 
 ### Fixed
-- **Skull marker toggle not removing skull** — Replaced non-functional `_onclick` attribute with `SecureHandlerWrapScript` preBody; the restricted-environment snippet swaps macrotext between `/targetmarker 8` (place) and `/targetmarker 0` (remove) before each click, fully taint-free
-- **Spell buttons not firing when clicked** — Changed click overlay `RegisterForClicks` from `AnyDown` to `AnyUp`, which is the standard registration for `SecureActionButtonTemplate` and matches Blizzard action bar behaviour
-- **Cooldown display taint errors** — Replaced `C_Spell.GetSpellCooldown` (returns "secret" values unusable from addon code) with event-based tracking via `UNIT_SPELLCAST_SUCCEEDED` + `GetTime()` and hardcoded spell durations
-- **Death Coil and other dual-purpose spells missing from spell picker** — Relaxed spell filter to include non-passive spells with range even when `IsSpellHarmful`/`IsSpellHelpful` both return false
+- **Skull marker toggle not removing skull** - Replaced non-functional `_onclick` attribute with `SecureHandlerWrapScript` preBody; the restricted-environment snippet swaps macrotext between `/targetmarker 8` (place) and `/targetmarker 0` (remove) before each click, fully taint-free
+- **Spell buttons not firing when clicked** - Changed click overlay `RegisterForClicks` from `AnyDown` to `AnyUp`, which is the standard registration for `SecureActionButtonTemplate` and matches Blizzard action bar behaviour
+- **Cooldown display taint errors** - Replaced `C_Spell.GetSpellCooldown` (returns "secret" values unusable from addon code) with event-based tracking via `UNIT_SPELLCAST_SUCCEEDED` + `GetTime()` and hardcoded spell durations
+- **Death Coil and other dual-purpose spells missing from spell picker** - Relaxed spell filter to include non-passive spells with range even when `IsSpellHarmful`/`IsSpellHelpful` both return false
 
 ### Technical
-- Skull toggle uses `SecureHandlerWrapScript(skullBtn, 'OnClick', wrapper, preBody)` — the preBody runs in an untainted restricted environment before the secure action fires, allowing `SetAttribute` calls even in combat
+- Skull toggle uses `SecureHandlerWrapScript(skullBtn, 'OnClick', wrapper, preBody)` - the preBody runs in an untainted restricted environment before the secure action fires, allowing `SetAttribute` calls even in combat
 - Cooldown tracker frame listens to `UNIT_SPELLCAST_SUCCEEDED` for player casts, records `GetTime()` start times, and uses a lookup table of known spell durations (`TMM_KNOWN_CD`) with an 8-second default
 - Spell filter now has three inclusion paths: harmful, helpful+hasRange, or unknown+hasRange (catches dual-purpose spells the API doesn't categorise)
 - Removed premature `TMM_RebuildRoster()` call from `TMM_CreateOrInitUI()` that ran before SavedVariables were loaded; roster is now built exclusively by event handlers (`ADDON_LOADED`, `PLAYER_ENTERING_WORLD`, `GROUP_ROSTER_UPDATE`)
@@ -135,11 +140,11 @@ All notable changes to TauntMasterMini will be documented in this file.
 ## [6.5.1] - 2026-03-16
 
 ### Fixed
-- **Skull marker button broken when `ActionButtonUseKeyDown` is OFF** — Changed `RegisterForClicks('AnyDown')` to `RegisterForClicks('AnyDown', 'AnyUp')` so the button fires correctly regardless of that CVar. This CVar is commonly set to OFF by rotation addons (e.g. GSE), which silently prevented the secure action from executing.
-- **Skull marker `PreClick` hook tainting `macrotext` attribute** — Removed the `HookScript('PreClick', ...)` that was calling `SetAttribute` from tainted addon Lua. Even outside combat, setting an attribute from tainted code taints the attribute value, causing the secure execution engine to silently refuse to run the macro. The toggle between `/targetmarker 8` and `/targetmarker 0` was unnecessary — `/targetmarker 8` has built-in WoW toggle behaviour (calling it on a unit that already has the skull removes it).
+- **Skull marker button broken when `ActionButtonUseKeyDown` is OFF** - Changed `RegisterForClicks('AnyDown')` to `RegisterForClicks('AnyDown', 'AnyUp')` so the button fires correctly regardless of that CVar. This CVar is commonly set to OFF by rotation addons (e.g. GSE), which silently prevented the secure action from executing.
+- **Skull marker `PreClick` hook tainting `macrotext` attribute** - Removed the `HookScript('PreClick', ...)` that was calling `SetAttribute` from tainted addon Lua. Even outside combat, setting an attribute from tainted code taints the attribute value, causing the secure execution engine to silently refuse to run the macro. The toggle between `/targetmarker 8` and `/targetmarker 0` was unnecessary - `/targetmarker 8` has built-in WoW toggle behaviour (calling it on a unit that already has the skull removes it).
 
 ### Technical
-- `RegisterForClicks('AnyDown', 'AnyUp')` matches how Blizzard's own action bar buttons are registered; WoW uses the `ActionButtonUseKeyDown` CVar to decide which event triggers the action — it never double-fires
+- `RegisterForClicks('AnyDown', 'AnyUp')` matches how Blizzard's own action bar buttons are registered; WoW uses the `ActionButtonUseKeyDown` CVar to decide which event triggers the action - it never double-fires
 - `PreClick` hook removed entirely; `macrotext` is now set once at frame creation from clean (non-tainted) code and never modified by addon Lua again
 
 ---
@@ -147,13 +152,13 @@ All notable changes to TauntMasterMini will be documented in this file.
 ## [6.5.0] - 2026-03-07
 
 ### Added
-- **Skull marker toggle** — A small skull icon sits above the tank bar header; click it to place or remove a skull raid marker on your current target
-- **Secure macro implementation** — Skull toggle uses `SecureActionButtonTemplate` with `/targetmarker 8`, so the engine handles the protected call in a secure context; completely immune to addon taint
-- **Visual toggle feedback** — Skull icon is dim/desaturated when inactive and bright/full-color after placing a skull; resets on target change
-- **Tooltip** — Hover the skull icon to see "Toggle Skull Marker" with usage hint
-- **First-pull notification** — When the party is not yet in combat and a non-tank pulls first, displays a distinct "1st Pull by [Name]" flash and chat message before falling back to normal pull alerts for subsequent pulls
-- **First-pull setting** — New checkbox in Options → Pull Alerts: "Show '1st Pull by ...' when someone initiates combat" (enabled by default)
-- **All pull alert checkboxes enabled by default** — Pull alerts, first-pull notification, and party/instance chat announce are all on by default for new installations
+- **Skull marker toggle** - A small skull icon sits above the tank bar header; click it to place or remove a skull raid marker on your current target
+- **Secure macro implementation** - Skull toggle uses `SecureActionButtonTemplate` with `/targetmarker 8`, so the engine handles the protected call in a secure context; completely immune to addon taint
+- **Visual toggle feedback** - Skull icon is dim/desaturated when inactive and bright/full-color after placing a skull; resets on target change
+- **Tooltip** - Hover the skull icon to see "Toggle Skull Marker" with usage hint
+- **First-pull notification** - When the party is not yet in combat and a non-tank pulls first, displays a distinct "1st Pull by [Name]" flash and chat message before falling back to normal pull alerts for subsequent pulls
+- **First-pull setting** - New checkbox in Options -> Pull Alerts: "Show '1st Pull by ...' when someone initiates combat" (enabled by default)
+- **All pull alert checkboxes enabled by default** - Pull alerts, first-pull notification, and party/instance chat announce are all on by default for new installations
 
 ### Changed
 - Pull alert party chat default changed from off to on for new installations
@@ -162,7 +167,7 @@ All notable changes to TauntMasterMini will be documented in this file.
 
 ### Technical
 - Skull button parented to `UIParent` and anchored to header to avoid taint propagation from threat event handling
-- `PreClick` handler swaps macro between `/targetmarker 8` (place) and `/targetmarker 0` (clear) based on internal boolean state — no `GetRaidTargetIndex` or `SetRaidTarget` calls from addon Lua
+- `PreClick` handler swaps macro between `/targetmarker 8` (place) and `/targetmarker 0` (clear) based on internal boolean state - no `GetRaidTargetIndex` or `SetRaidTarget` calls from addon Lua
 - `PostClick` flips `_skullActive` boolean and updates icon; `PLAYER_TARGET_CHANGED` resets state
 - Green `NormalTexture` from `SecureActionButtonTemplate` suppressed via `hooksecurefunc`
 
@@ -171,14 +176,14 @@ All notable changes to TauntMasterMini will be documented in this file.
 ## [6.4.0] - 2026-03-07
 
 ### Added
-- **Pull alert system** — Detects when a non-tank party/raid member gains highest threat (status 3) on your current target and fires an immediate alert
-- **Flashing alert box** — A red backdrop frame pops up near the top of the screen showing `>> PULL! << [Name]`; bounces alpha between full and near-invisible (0.25 s cycle) for 3 seconds then auto-hides; draggable to reposition
-- **Local chat message** — Always prints `TauntMasterMini: [Name] pulled!` to your chat frame when a pull is detected
-- **Party/instance chat announce** — Optional: sends `[Name] pulled!` via `SendChatMessage` to `INSTANCE_CHAT` (dungeon), `RAID`, or `PARTY` as appropriate
+- **Pull alert system** - Detects when a non-tank party/raid member gains highest threat (status 3) on your current target and fires an immediate alert
+- **Flashing alert box** - A red backdrop frame pops up near the top of the screen showing `>> PULL! << [Name]`; bounces alpha between full and near-invisible (0.25 s cycle) for 3 seconds then auto-hides; draggable to reposition
+- **Local chat message** - Always prints `TauntMasterMini: [Name] pulled!` to your chat frame when a pull is detected
+- **Party/instance chat announce** - Optional: sends `[Name] pulled!` via `SendChatMessage` to `INSTANCE_CHAT` (dungeon), `RAID`, or `PARTY` as appropriate
 - **Two new settings in Options panel** (under a "Pull Alerts" section):
-  - *Alert when non-tank pulls* — enables/disables the flash box and local message (on by default)
-  - *Announce pull in party/instance chat* — sends the chat message (/p or /i equivalent, off by default)
-- **5-second debounce per unit** — suppresses repeat alerts for the same puller; cleared automatically on roster changes
+  - *Alert when non-tank pulls* - enables/disables the flash box and local message (on by default)
+  - *Announce pull in party/instance chat* - sends the chat message (/p or /i equivalent, off by default)
+- **5-second debounce per unit** - suppresses repeat alerts for the same puller; cleared automatically on roster changes
 
 ### Changed
 - Options panel height increased from 520 to 620 px to accommodate pull alert section
@@ -189,16 +194,16 @@ All notable changes to TauntMasterMini will be documented in this file.
 ## [6.3.0] - 2026-03-07
 
 ### Added
-- **Out-of-range indicator** — Red semi-transparent overlay on buttons when the spell target is out of range; checks `@unittarget` for hostile spells and `@unit` for helpful spells using `C_Spell.IsSpellInRange`
+- **Out-of-range indicator** - Red semi-transparent overlay on buttons when the spell target is out of range; checks `@unittarget` for hostile spells and `@unit` for helpful spells using `C_Spell.IsSpellInRange`
 
 ### Fixed
-- **Left-click not working** — Rewrote hostile-spell macros to use `@<unit>target` directly instead of `/assist` which was failing silently with conditional syntax
-- **Stale spell after reload** — Moved all ADDON_LOADED handling to the header frame (removed from individual buttons); dropdown text is now explicitly refreshed after SavedVariables load so it matches the saved spell, not the default
-- **Double-fire on click** — Changed `RegisterForClicks('AnyDown', 'AnyUp')` to `RegisterForClicks('AnyDown')` so macros only fire once per click
-- **Fishing and other non-combat spells in spell list** — Added explicit case-insensitive blocklist (Fishing, Cooking, Skinning, Mining, Herb Gathering, Prospecting, Milling, Disenchant, Liftoff, Fishing Journal, etc.) as a safety net on top of the harmful/helpful filter
+- **Left-click not working** - Rewrote hostile-spell macros to use `@<unit>target` directly instead of `/assist` which was failing silently with conditional syntax
+- **Stale spell after reload** - Moved all ADDON_LOADED handling to the header frame (removed from individual buttons); dropdown text is now explicitly refreshed after SavedVariables load so it matches the saved spell, not the default
+- **Double-fire on click** - Changed `RegisterForClicks('AnyDown', 'AnyUp')` to `RegisterForClicks('AnyDown')` so macros only fire once per click
+- **Fishing and other non-combat spells in spell list** - Added explicit case-insensitive blocklist (Fishing, Cooking, Skinning, Mining, Herb Gathering, Prospecting, Milling, Disenchant, Liftoff, Fishing Journal, etc.) as a safety net on top of the harmful/helpful filter
 
 ### Changed
-- **OnUpdate throttled** — Button updates (threat, health, cooldowns, range) now run at ~10fps instead of every frame to reduce CPU overhead
+- **OnUpdate throttled** - Button updates (threat, health, cooldowns, range) now run at ~10fps instead of every frame to reduce CPU overhead
 
 ### Technical
 - Hostile-spell macros now use `/cast [@party1target,exists,harm,nodead] Spell` instead of `/assist party1` + `/cast`
@@ -211,11 +216,11 @@ All notable changes to TauntMasterMini will be documented in this file.
 ## [6.2.0] - 2026-03-07
 
 ### Fixed
-- **Green squares on buttons** — Changed main button from `SecureActionButtonTemplate` to plain `Frame`; hooked click overlay's `SetNormalTexture` to permanently block WoW re-applying default green textures
-- **Frame lock not applied on login/reload** — Added `TMM_UpdateLockState()` to header's `PLAYER_ENTERING_WORLD` handler and `TMM_RebuildRoster()` to `ADDON_LOADED` so saved lock state is correctly restored
-- **Player names not showing on reload** — Added roster rebuild after `ADDON_LOADED` to apply `showNames` setting from SavedVariables; guarded individual button `PLAYER_ENTERING_WORLD` to only refresh when unit is assigned
-- **Cooldown swipe not rendering** — Added `SetSwipeTexture('Interface/Cooldown/cooldown2')` to bare Cooldown widgets (required when not using `CooldownFrameTemplate`)
-- **Profession spells in spell list** — Added profession/trade spell blocklist (Cooking, Fishing, Mining, Tailoring, etc.) and `isCombatSpell` filter for action bar scan; also skips off-spec spellbook tabs
+- **Green squares on buttons** - Changed main button from `SecureActionButtonTemplate` to plain `Frame`; hooked click overlay's `SetNormalTexture` to permanently block WoW re-applying default green textures
+- **Frame lock not applied on login/reload** - Added `TMM_UpdateLockState()` to header's `PLAYER_ENTERING_WORLD` handler and `TMM_RebuildRoster()` to `ADDON_LOADED` so saved lock state is correctly restored
+- **Player names not showing on reload** - Added roster rebuild after `ADDON_LOADED` to apply `showNames` setting from SavedVariables; guarded individual button `PLAYER_ENTERING_WORLD` to only refresh when unit is assigned
+- **Cooldown swipe not rendering** - Added `SetSwipeTexture('Interface/Cooldown/cooldown2')` to bare Cooldown widgets (required when not using `CooldownFrameTemplate`)
+- **Profession spells in spell list** - Added profession/trade spell blocklist (Cooking, Fishing, Mining, Tailoring, etc.) and `isCombatSpell` filter for action bar scan; also skips off-spec spellbook tabs
 
 ### Technical
 - Main unit buttons are now plain `Frame` instead of `SecureActionButtonTemplate` (only the click overlay needs secure template)
@@ -227,23 +232,23 @@ All notable changes to TauntMasterMini will be documented in this file.
 ## [6.1.0] - 2026-03-07
 
 ### Added
-- **Spell picker overhaul** — Dropdown now lists all usable spells from your spellbook (tabs, flyouts, talents, action bars) instead of action-bar-only scanning
-- **Blessing / friendly spell support** — Helpful spells (e.g. Blessing of Protection) now cast correctly using `@unitToken,help,nodead` macro conditions
-- **Cooldown overlays** — Each button shows a dark clock-sweep cooldown animation for both left-click and right-click spells (split left/right halves)
-- **Show Player Names toggle** — New checkbox in options to show or hide class-colored names on buttons
-- **Drag handle** — Green bar appears above the header when the frame is unlocked for easier repositioning
-- **Frame position saving** — Header position is saved per-character and restored on login
+- **Spell picker overhaul** - Dropdown now lists all usable spells from your spellbook (tabs, flyouts, talents, action bars) instead of action-bar-only scanning
+- **Blessing / friendly spell support** - Helpful spells (e.g. Blessing of Protection) now cast correctly using `@unitToken,help,nodead` macro conditions
+- **Cooldown overlays** - Each button shows a dark clock-sweep cooldown animation for both left-click and right-click spells (split left/right halves)
+- **Show Player Names toggle** - New checkbox in options to show or hide class-colored names on buttons
+- **Drag handle** - Green bar appears above the header when the frame is unlocked for easier repositioning
+- **Frame position saving** - Header position is saved per-character and restored on login
 
 ### Fixed
-- **Spell list showing junk entries** — Removed unbounded spellbook scan that was pulling non-existent spell slots; filtered guild-perks tab
-- **Taunts requiring enemy targeted** — Hostile-spell macros now use `/assist unitToken` before `/cast` so taunts work without the player having the enemy targeted
-- **Cooldown taint errors** — Replaced `CooldownFrame_Set()` (Lua wrapper) with `Cooldown:SetCooldown()` (C-side, AllowedWhenTainted) to avoid taint from secret spell cooldown values
-- **Green boxes on buttons** — Removed `SetDrawEdge(true)` from cooldown frames that was rendering bright green edge textures
-- **Frame lock default** — Frame now defaults to locked on first install
+- **Spell list showing junk entries** - Removed unbounded spellbook scan that was pulling non-existent spell slots; filtered guild-perks tab
+- **Taunts requiring enemy targeted** - Hostile-spell macros now use `/assist unitToken` before `/cast` so taunts work without the player having the enemy targeted
+- **Cooldown taint errors** - Replaced `CooldownFrame_Set()` (Lua wrapper) with `Cooldown:SetCooldown()` (C-side, AllowedWhenTainted) to avoid taint from secret spell cooldown values
+- **Green boxes on buttons** - Removed `SetDrawEdge(true)` from cooldown frames that was rendering bright green edge textures
+- **Frame lock default** - Frame now defaults to locked on first install
 
 ### Changed
-- **Options panel** — Enlarged to 520px to accommodate new checkboxes
-- **Cooldown display** — Split into two half-width overlays (left half = left-click spell, right half = right-click spell) so both spells' cooldowns are visible simultaneously
+- **Options panel** - Enlarged to 520px to accommodate new checkboxes
+- **Cooldown display** - Split into two half-width overlays (left half = left-click spell, right half = right-click spell) so both spells' cooldowns are visible simultaneously
 
 ### Technical
 - Wiki-verified all WoW API calls against warcraft.wiki.gg for 12.0 compatibility

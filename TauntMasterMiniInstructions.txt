@@ -35,7 +35,7 @@ Click a bar to cast your configured spell:
   Right-click = secondary spell (configurable)
 
 Hostile spells (taunts, damage) are cast on the group member's hostile
-target automatically — you never need to manually switch targets.
+target automatically - you never need to manually switch targets.
 Friendly spells (blessings, heals) are cast directly on the group member.
 
 
@@ -117,7 +117,7 @@ The spell dropdown scans your entire spellbook:
 The Left Click and Right Click pickers always include your class interrupt,
 so you can bind the interrupt to a bar click. When "Show Interrupt Button"
 (Display tab) is off, the Interrupt Spell picker is greyed out and shows a
-note — a greyed picker cannot be opened.
+note - a greyed picker cannot be opened.
 
 Only combat-relevant spells appear: must be harmful, helpful, or have range
 (catches dual-purpose spells like Death Coil), non-passive, and not on the
@@ -159,7 +159,7 @@ When a non-tank party member grabs aggro:
   - Local chat prints:  TauntMasterMini: [Name] pulled aggro!
   - Optional: a large on-screen raid-warning banner
   - Optional: a sound cue
-  (The old party/instance chat announce was removed — the protected
+  (The old party/instance chat announce was removed - the protected
    SendChatMessage call triggered ADDON_ACTION_BLOCKED in combat and is
    disallowed under Midnight addon-disarmament.)
 
@@ -182,30 +182,30 @@ All three pull settings are enabled by default and can be toggled in /tm.
   Brewmaster Monk ........... Provoke
   Vengeance Demon Hunter .... Torment
 
-You can assign ANY spell to left/right click — taunts, blessings, heals,
+You can assign ANY spell to left/right click - taunts, blessings, heals,
 damage, or defensives.
 
 
 #####  Troubleshooting  #####
 
   No bars visible?
-    → Join a party or raid.  Solo shows only your own bar.
+    -> Join a party or raid.  Solo shows only your own bar.
 
   Dropdown shows no spells?
-    → Type /tm spells for diagnostic.  Reopen picker after a moment.
+    -> Type /tm spells for diagnostic.  Reopen picker after a moment.
 
   Click does nothing?
-    → Must be out of combat to rebuild macros.  Type /reload.
+    -> Must be out of combat to rebuild macros.  Type /reload.
 
   Wrong spell fires after reload?
-    → Fixed in 6.3.0.  If it persists, /reload once more.
+    -> Fixed in 6.3.0.  If it persists, /reload once more.
 
   Raid marker not applying?
-    → Must have a target selected.  Each marker button toggles its
+    -> Must have a target selected.  Each marker button toggles its
       marker via /targetmarker securely.
 
   Pull alert not firing?
-    → Alert is based on threat healthbar color.  Ensure the non-tank
+    -> Alert is based on threat healthbar color.  Ensure the non-tank
       actually has aggro (orange or red bar).
 
   Enable Lua error reporting:

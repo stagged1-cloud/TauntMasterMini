@@ -1,4 +1,4 @@
-TauntMasterMini – Threat Management Addon for Tanks
+TauntMasterMini - Threat Management Addon for Tanks
 Version 7.2.0 | Updated for Midnight 12.0
 
 ================================================================================
@@ -8,7 +8,7 @@ OVERVIEW
 TauntMasterMini is a lightweight, all-in-one threat management addon designed
 for tank players.  It displays compact, color-coded party and raid frames with
 real-time threat tracking, one-click spell casting, cooldown indicators, pull
-alerts with first-pull detection, an interrupt slot, and a raid-marker bar —
+alerts with first-pull detection, an interrupt slot, and a raid-marker bar  - 
 everything you need to manage threat in dungeons and raids within a single
 movable frame.
 
@@ -17,86 +17,86 @@ CORE FEATURES
 -------------
 
 Real-Time Threat Detection & Monitoring
-  • Visual party/raid frames with color-coded health bars indicating threat level
-  • Instant threat situation updates for all group members
-  • Class-colored player names for quick identification
-  • Real-time health tracking for every party and raid member
+  - Visual party/raid frames with color-coded health bars indicating threat level
+  - Instant threat situation updates for all group members
+  - Class-colored player names for quick identification
+  - Real-time health tracking for every party and raid member
 
 One-Click Spell Casting
-  • Left-click any player bar to cast your primary spell on their target
-  • Right-click to cast a configurable secondary spell
-  • Hostile spells (taunts, damage) automatically target the group member's
-    enemy — no manual target switching required
-  • Friendly spells (blessings, heals) cast directly on the group member
-  • Dual-target spells try the friendly unit first, then fall back to their
+  - Left-click any player bar to cast your primary spell on their target
+  - Right-click to cast a configurable secondary spell
+  - Hostile spells (taunts, damage) automatically target the group member's
+    enemy - no manual target switching required
+  - Friendly spells (blessings, heals) cast directly on the group member
+  - Dual-target spells try the friendly unit first, then fall back to their
     hostile target
 
 Full Spellbook Spell Picker
-  • Scans all spellbook tabs, flyouts (Blessings, Portals, etc.), and
+  - Scans all spellbook tabs, flyouts (Blessings, Portals, etc.), and
     talent-granted spells
-  • Action bar supplementary scan catches anything the spellbook might miss
-  • Intelligent filtering: only shows combat-relevant spells (harmful or
+  - Action bar supplementary scan catches anything the spellbook might miss
+  - Intelligent filtering: only shows combat-relevant spells (harmful or
     helpful, non-passive)
-  • Explicit blocklist removes Fishing, Cooking, Mining, Skinning, and other
+  - Explicit blocklist removes Fishing, Cooking, Mining, Skinning, and other
     non-combat entries
-  • Class default taunt always available as a fallback
-  • Your class interrupt is always offered in every spell picker, so it can
+  - Class default taunt always available as a fallback
+  - Your class interrupt is always offered in every spell picker, so it can
     be bound to left-click or right-click, not just the interrupt slot
 
 Visual Indicators
-  • Threat-colored health bars:
-      Green (no threat) → Yellow (high threat) → Orange (insecure aggro) →
+  - Threat-colored health bars:
+      Green (no threat) -> Yellow (high threat) -> Orange (insecure aggro) ->
       Red (tanking securely)
-  • Dual cooldown overlays: split clock-sweep display — left half for
+  - Dual cooldown overlays: split clock-sweep display - left half for
     left-click spell, right half for right-click spell
-  • Role icons on every player bar: Tank / Healer / DPS shown via the LFG
+  - Role icons on every player bar: Tank / Healer / DPS shown via the LFG
     role texture sheet; falls back to DPS when role is unassigned and
     infers Tank/Healer from spec where possible
 
 Pull Alerts & First-Pull Detection
-  • Flash notification when a non-tank party member grabs aggro — a red
+  - Flash notification when a non-tank party member grabs aggro - a red
     flashing banner pops up near the top of the screen for 3 seconds
-  • First-pull detection: when no one has pulled yet this combat, the first
+  - First-pull detection: when no one has pulled yet this combat, the first
     non-tank to grab aggro triggers a distinct "1st Pull by [Name]!" alert
     with an orange-accented flash; subsequent pulls revert to normal alerts
-  • Local chat message printed for every pull detected
-  • Optional large on-screen raid-warning banner (replaces the old
+  - Local chat message printed for every pull detected
+  - Optional large on-screen raid-warning banner (replaces the old
     party/instance chat announce, which was removed because the protected
     SendChatMessage call triggered ADDON_ACTION_BLOCKED in combat and is
     disallowed under Midnight addon-disarmament)
-  • Optional sound cue on pull alert
-  • Smart debounce: 5-second cooldown per unit prevents spam
-  • First-pull state resets automatically when combat ends
-  • Pull alert checkboxes enabled by default
+  - Optional sound cue on pull alert
+  - Smart debounce: 5-second cooldown per unit prevents spam
+  - First-pull state resets automatically when combat ends
+  - Pull alert checkboxes enabled by default
 
 Raid Marker Bar
-  • A row of all 8 raid markers below the frame (default on, toggleable
-    in Options → Display)
-  • Each button places its marker on your current target; press again to
+  - A row of all 8 raid markers below the frame (default on, toggleable
+    in Options -> Display)
+  - Each button places its marker on your current target; press again to
     remove it. Bright when applied, dim when not
-  • Uses Blizzard's SecureActionButtonTemplate with /targetmarker macros for
-    taint-immune operation — works reliably even in tainted addon contexts
-  • Replaces the single skull button from earlier versions
+  - Uses Blizzard's SecureActionButtonTemplate with /targetmarker macros for
+    taint-immune operation - works reliably even in tainted addon contexts
+  - Replaces the single skull button from earlier versions
 
 Interrupt & Taunt Buttons
-  • Optional secure Interrupt button casts your configured interrupt on your
+  - Optional secure Interrupt button casts your configured interrupt on your
     current target; size-adjustable, with its own interrupt-only spell picker
-  • Optional secure Target-taunt and Focus-taunt buttons
-  • Macros are set only from clean, combat-guarded code (never from a tainted
+  - Optional secure Target-taunt and Focus-taunt buttons
+  - Macros are set only from clean, combat-guarded code (never from a tainted
     click handler)
-  • Turning the interrupt button off greys out the Interrupt Spell picker
+  - Turning the interrupt button off greys out the Interrupt Spell picker
     and shows a note, so you never set a spell for a hidden button
 
 Flexible Customization
-  • Adjustable button dimensions (width: 50–200 px, height: 20–60 px)
-  • Configurable grid layout (1–20 units per column, 1–8 columns max)
-  • Movable frame with drag handle and lock/unlock toggle; position saved
+  - Adjustable button dimensions (width: 50-200 px, height: 20-60 px)
+  - Configurable grid layout (1-20 units per column, 1-8 columns max)
+  - Movable frame with drag handle and lock/unlock toggle; position saved
     per-character
-  • Minimap button: left-click for options, right-click to toggle the frame
-  • Show Self toggle: hide your own button from the group list when you
+  - Minimap button: left-click for options, right-click to toggle the frame
+  - Show Self toggle: hide your own button from the group list when you
     don't need to taunt yourself (session-only, resets on reload)
-  • Toggle player names, cooldown overlays, and minimap icon independently
-  • All changes are combat-safe — queued until you leave combat
+  - Toggle player names, cooldown overlays, and minimap icon independently
+  - All changes are combat-safe - queued until you leave combat
 
 
 TANK CLASS SUPPORT
@@ -110,7 +110,7 @@ All six tank specializations are supported with class-specific default taunts:
   Brewmaster Monk ........... Provoke
   Vengeance Demon Hunter .... Torment
 
-Any spell from your spellbook can be assigned to left-click or right-click —
+Any spell from your spellbook can be assigned to left-click or right-click  - 
 taunts, blessings, heals, defensives, or damage spells.
 
 
@@ -130,47 +130,47 @@ SLASH COMMANDS
 
 KEY FEATURES AT A GLANCE
 -------------------------
-  ✓ Real-time threat visualization — color-coded bars and live health for
+  * Real-time threat visualization - color-coded bars and live health for
     every party/raid member
-  ✓ One-click casting — left/right click casts on a member's hostile target
+  * One-click casting - left/right click casts on a member's hostile target
     via smart macros; friendly spells cast directly on the member
-  ✓ Full spellbook spell picker — scans tabs, flyouts, talents, and action
+  * Full spellbook spell picker - scans tabs, flyouts, talents, and action
     bars; filters out professions and non-combat spells
-  ✓ Dual cooldown overlays — split clock-sweep display shows both left-click
+  * Dual cooldown overlays - split clock-sweep display shows both left-click
     and right-click spell cooldowns
-  ✓ Raid-marker bar — all 8 markers below the frame, each a place/remove
+  * Raid-marker bar - all 8 markers below the frame, each a place/remove
     toggle; taint-immune secure implementation
-  ✓ Interrupt slot + Target/Focus taunt — optional secure buttons with
+  * Interrupt slot + Target/Focus taunt - optional secure buttons with
     their own size sliders and interrupt-only spell picker
-  ✓ Pull alerts with first-pull detection — flashing banner, local message,
+  * Pull alerts with first-pull detection - flashing banner, local message,
     optional on-screen raid-warning banner and sound cue; distinct "1st
     Pull" notification
-  ✓ Tabbed options, frame Scale/Opacity, bar Sort, Compact mode, Solo
+  * Tabbed options, frame Scale/Opacity, bar Sort, Compact mode, Solo
     target bar, and Blizzard Edit Mode integration
-  ✓ Class-aware defaults — auto-selects the correct taunt for all six tank
+  * Class-aware defaults - auto-selects the correct taunt for all six tank
     specs
-  ✓ Role icons on every bar — Tank / Healer / DPS shown via LFG texture
+  * Role icons on every bar - Tank / Healer / DPS shown via LFG texture
     sheet; spec-aware fallback for unassigned roles
-  ✓ Show Self toggle — hide your own bar to free space; resets to shown
+  * Show Self toggle - hide your own bar to free space; resets to shown
     on reload
-  ✓ Flexible layout — adjustable button width/height, units per column, and
+  * Flexible layout - adjustable button width/height, units per column, and
     max columns
-  ✓ Movable, lockable frame — drag handle to reposition; lock to prevent
+  * Movable, lockable frame - drag handle to reposition; lock to prevent
     movement; position saved per-character
-  ✓ Minimap integration — left-click opens options; right-click toggles
+  * Minimap integration - left-click opens options; right-click toggles
     the frame
-  ✓ Smart group detection — auto-builds for solo, party, and raid (up to
+  * Smart group detection - auto-builds for solo, party, and raid (up to
     40 players)
-  ✓ Modernized and lightweight — streamlined Lua, wiki-verified APIs for
+  * Modernized and lightweight - streamlined Lua, wiki-verified APIs for
     Midnight Pre-Patch 12.0.0
 
 
 REQUIREMENTS
 ------------
-  • World of Warcraft: Midnight Pre-Patch (12.0.0+)
-  • LibStub (included)
-  • LibDataBroker-1.1 (included)
-  • LibDBIcon-1.0 (included)
+  - World of Warcraft: Midnight Pre-Patch (12.0.0+)
+  - LibStub (included)
+  - LibDataBroker-1.1 (included)
+  - LibDBIcon-1.0 (included)
 
 
 CREDITS
