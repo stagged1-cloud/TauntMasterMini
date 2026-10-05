@@ -9,7 +9,7 @@ WHAT'S NEW IN 7.2.0:
 ---------------------
 1. CLASS INTERRUPT IN THE LEFT/RIGHT CLICK PICKERS
    Your class interrupt is now offered in the Left Click and Right Click
-   spell dropdowns too, not just the Interrupt picker — so you can bind the
+   spell dropdowns too, not just the Interrupt picker - so you can bind the
    interrupt to a bar click even if it is not on an action bar.  Sourced
    per class and de-duplicated against the spellbook scan, the same
    fallback pattern already used for the class taunt.
@@ -26,7 +26,7 @@ WHAT WAS NEW IN 7.1.0:
 -----------------------
 1. SMART PER-CLASS STARTER KIT
    A fresh character or "Reset Defaults" now auto-fills left = class taunt,
-   right = a useful class spell, interrupt = the class interrupt — each
+   right = a useful class spell, interrupt = the class interrupt - each
    validated against the spells the character actually knows (spellbook +
    active talents).
 
@@ -35,7 +35,7 @@ WHAT WAS NEW IN 7.1.0:
    Options > Spells tab, when the current spec is not a tank spec.
 
 3. OUT-OF-RANGE INDICATOR REMOVED
-   The red out-of-range tint is gone — it is not achievable under Midnight
+   The red out-of-range tint is gone - it is not achievable under Midnight
    (12.0) addon-disarmament (spell range became an opaque "secret value"
    addons may not read).  /tm range is kept as a diagnostic.
 
@@ -132,15 +132,15 @@ WHAT WAS NEW IN 6.6.0:
 -----------------------
 1. SHOW SELF OPTION
    New "Show Self" checkbox in the Options menu.  Untick to hide your own
-   button from the group list — useful for tanks who don't need to taunt
+   button from the group list - useful for tanks who don't need to taunt
    themselves.
 
 2. IMPROVED SPELL PICKER
    Dual-purpose spells like Death Coil now appear in the spell list.
 
 3. FIXED SPELL BUTTONS
-   Click overlay uses RegisterForClicks('AnyUp') — standard for secure
-   action buttons — fixing spells not firing when clicked.
+   Click overlay uses RegisterForClicks('AnyUp') - standard for secure
+   action buttons - fixing spells not firing when clicked.
 
 4. FIXED COOLDOWN TRACKING
    Event-based tracking via UNIT_SPELLCAST_SUCCEEDED + GetTime() and known
@@ -176,7 +176,7 @@ WHAT WAS ADDED IN 6.4.0:
 --------------------------
 - Pull alert system: flashing red banner + local chat message
 - 5-second debounce per unit prevents alert spam
-  (The party/instance chat announce added here was removed in 7.0.0 — see
+  (The party/instance chat announce added here was removed in 7.0.0 - see
    the ADDON_ACTION_BLOCKED fix above.)
 
 
@@ -184,13 +184,13 @@ WHAT WAS ADDED IN 6.3.0:
 --------------------------
 - Out-of-range red tint indicator on bars
 - Rewritten macro system using @<unit>target (no more /assist errors)
-- Saved spell fix — selections persist correctly across /reload
-- Click reliability — macros fire once on mouse-down only
+- Saved spell fix - selections persist correctly across /reload
+- Click reliability - macros fire once on mouse-down only
 - Hardened spell filter blocklist (Fishing, Cooking, Mining, etc.)
 - OnUpdate throttled to ~10 fps for CPU performance
 
 
-WHAT WAS ADDED IN 6.1–6.2:
+WHAT WAS ADDED IN 6.1-6.2:
 ----------------------------
 - Full spellbook spell picker (tabs, flyouts, talents, action bars)
 - Blessing / friendly spell casting (@unit,help,nodead macros)
@@ -230,12 +230,12 @@ FULL FEATURE LIST (7.0.0):
 
 TANK SPECS SUPPORTED:
 ---------------------
-✓ Protection Warrior      (Taunt)
-✓ Protection Paladin      (Hand of Reckoning)
-✓ Blood Death Knight      (Dark Command)
-✓ Guardian Druid          (Growl)
-✓ Brewmaster Monk         (Provoke)
-✓ Vengeance Demon Hunter  (Torment)
+* Protection Warrior      (Taunt)
+* Protection Paladin      (Hand of Reckoning)
+* Blood Death Knight      (Dark Command)
+* Guardian Druid          (Growl)
+* Brewmaster Monk         (Provoke)
+* Vengeance Demon Hunter  (Torment)
 
 
 SLASH COMMANDS:
@@ -258,23 +258,23 @@ TESTING AFTER UPDATE:
 
 2. Look for: "TauntMasterMini v7.0.0" in green text in chat
 
-3. Type /tm — verify the tabbed options window opens (Layout / Display /
+3. Type /tm - verify the tabbed options window opens (Layout / Display /
    Spells / Alerts) and fits on screen.  Check the Alerts tab toggles.
 
-4. Layout tab → use the Test bars control (or /tm test 5) solo:
+4. Layout tab -> use the Test bars control (or /tm test 5) solo:
    - Dummy bars appear with randomised class/role
    - Tune width/height/columns/scale/opacity/sort, then /tm test 0
 
-5. Display tab → enable the Raid Marker Bar:
+5. Display tab -> enable the Raid Marker Bar:
    - Target an enemy
-   - Click a marker button — the marker should appear over the mob and the
+   - Click a marker button - the marker should appear over the mob and the
      button should brighten; click again to remove (button dims)
    - Optionally enable the Interrupt and Target/Focus taunt buttons
 
 6. Join a party:
    - Bars appear with class-colored names and role icons
-   - Left-click a bar → casts your primary spell on their target
-   - Right-click → secondary spell
+   - Left-click a bar -> casts your primary spell on their target
+   - Right-click -> secondary spell
    - Cooldown indicators update after you cast
 
 7. Test pull alerts:
@@ -282,45 +282,45 @@ TESTING AFTER UPDATE:
    - First pull: ">> 1st PULL! << [Name]" flash
    - Subsequent pulls: ">> PULL! << [Name]" flash
    - With "Announce pull on-screen" on, a large raid-warning banner shows
-   - Combat ends → first-pull tracker resets
+   - Combat ends -> first-pull tracker resets
 
-8. /tm spells — verify no Fishing, Cooking, or other junk in the list
+8. /tm spells - verify no Fishing, Cooking, or other junk in the list
 
-9. (Paranoid) /console taintLog 2, reproduce, then check Logs/taint.log —
+9. (Paranoid) /console taintLog 2, reproduce, then check Logs/taint.log  - 
    expect no new TauntMasterMini taint entries.
 
 
 TROUBLESHOOTING:
 ----------------
 No bars?
-  → Must be in a party or raid.  Solo shows only your bar (or the Solo
+  -> Must be in a party or raid.  Solo shows only your bar (or the Solo
     target bar if enabled).
 
 Dropdown empty?
-  → Type /tm spells for diagnostic.  Reopen picker after a moment.
+  -> Type /tm spells for diagnostic.  Reopen picker after a moment.
 
 Wrong spell fires?
-  → Fixed in 6.3.0.  If it persists, close options, /reload, reopen.
+  -> Fixed in 6.3.0.  If it persists, close options, /reload, reopen.
 
 Raid marker not applying?
-  → Must have a target selected.  Each marker button toggles its marker
+  -> Must have a target selected.  Each marker button toggles its marker
     via /targetmarker securely.
 
 Interrupt / taunt button does nothing?
-  → Macro is set out of combat only.  Leave combat and /reload.  Set the
-    interrupt spell in Options → Spells.
+  -> Macro is set out of combat only.  Leave combat and /reload.  Set the
+    interrupt spell in Options -> Spells.
 
 Pull alert not announcing in chat?
-  → By design in 7.0.0 — automated combat chat was removed (it triggered
+  -> By design in 7.0.0 - automated combat chat was removed (it triggered
     ADDON_ACTION_BLOCKED).  Enable "Announce pull on-screen" for the
     raid-warning banner instead.
 
 Pull alert not firing?
-  → Alert is based on threat healthbar color — the non-tank must have
+  -> Alert is based on threat healthbar color - the non-tank must have
     aggro (orange or red bar) to trigger detection.
 
 Pull alert spamming?
-  → 5-second debounce is active.  If still an issue, untick
+  -> 5-second debounce is active.  If still an issue, untick
     "Alert when non-tank pulls" in /tm options.
 
 Enable Lua errors:

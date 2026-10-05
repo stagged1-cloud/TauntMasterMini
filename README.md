@@ -4,14 +4,14 @@
 
 A lightweight threat utility for tanks that shows live threat bars, one-click spell casting, full spellbook spell selection, cooldown overlays, and smart group targeting in a compact, movable frame.
 
-### What’s new in 7.2.0
-- **Class interrupt in the Left/Right Click pickers** — your class interrupt now appears in the **Left Click Spell** and **Right Click Spell** dropdowns too, so you can bind it to a bar click; previously it was only in the Interrupt picker
-- **Interrupt Spell picker greys out** when **Show Interrupt Button** is turned off, with a note explaining why — no more setting a spell for a hidden button
+### What's new in 7.2.0
+- **Class interrupt in the Left/Right Click pickers** - your class interrupt now appears in the **Left Click Spell** and **Right Click Spell** dropdowns too, so you can bind it to a bar click; previously it was only in the Interrupt picker
+- **Interrupt Spell picker greys out** when **Show Interrupt Button** is turned off, with a note explaining why - no more setting a spell for a hidden button
 
-### Earlier — 7.1.0
-- **Smart per-class starter kit** — a fresh character or “Reset Defaults” auto-fills left = class taunt, right = a useful class spell, interrupt = the class interrupt, **validated against the spells the character actually knows** (spellbook + active talents)
-- **Not-in-tanking-spec notice** — a one-time chat message and an Options banner when you’re not in a tank spec
-- **Removed the out-of-range indicator** — no longer achievable under Midnight (12.0) addon-disarmament (range is now an opaque/secret value addons may not read); see CHANGELOG
+### Earlier - 7.1.0
+- **Smart per-class starter kit** - a fresh character or "Reset Defaults" auto-fills left = class taunt, right = a useful class spell, interrupt = the class interrupt, **validated against the spells the character actually knows** (spellbook + active talents)
+- **Not-in-tanking-spec notice** - a one-time chat message and an Options banner when you're not in a tank spec
+- **Removed the out-of-range indicator** - no longer achievable under Midnight (12.0) addon-disarmament (range is now an opaque/secret value addons may not read); see CHANGELOG
 
 ### Core features
 - Real-time color-coded threat bars for party/raid up to 40 players
@@ -54,11 +54,11 @@ A lightweight threat utility for tanks that shows live threat bars, one-click sp
 
 ## How to Use
 
-1. **Join a group** — The addon automatically creates a bar for each party/raid member
-2. **Monitor threat** — Watch health bar colors change in real-time as threat shifts
-3. **Click to cast** — Left-click a bar to cast your primary spell; right-click for your secondary spell
-4. **Watch cooldowns** — The dark clock-sweep on each bar shows when your spells are ready
-5. **Customize** — Type `/tm` to adjust sizes, spells, layout, and display options
+1. **Join a group** - The addon automatically creates a bar for each party/raid member
+2. **Monitor threat** - Watch health bar colors change in real-time as threat shifts
+3. **Click to cast** - Left-click a bar to cast your primary spell; right-click for your secondary spell
+4. **Watch cooldowns** - The dark clock-sweep on each bar shows when your spells are ready
+5. **Customize** - Type `/tm` to adjust sizes, spells, layout, and display options
 
 ---
 
@@ -70,12 +70,12 @@ Access via `/tm` or left-click the minimap button. The window is a fixed-size ta
 
 | Option | Description |
 |---|---|
-| **Button Width** | Horizontal size of each player bar (50–200 px) |
-| **Button Height** | Vertical size of each player bar (20–60 px) |
-| **Units Per Column** | How many bars per column before wrapping (1–20) |
-| **Max Columns** | Maximum columns to display (1–8) |
-| **Frame Scale (%)** | Whole-frame scale (50–150 %) |
-| **Frame Opacity (%)** | Whole-frame opacity (20–100 %) |
+| **Button Width** | Horizontal size of each player bar (50-200 px) |
+| **Button Height** | Vertical size of each player bar (20-60 px) |
+| **Units Per Column** | How many bars per column before wrapping (1-20) |
+| **Max Columns** | Maximum columns to display (1-8) |
+| **Frame Scale (%)** | Whole-frame scale (50-150 %) |
+| **Frame Opacity (%)** | Whole-frame opacity (20-100 %) |
 | **Sort** | Bar order: Group order / Tanks first / By role / By name |
 | **Test bars** | Spawn randomised dummy bars solo to tune layout (also `/tm test [N]`) |
 
@@ -97,10 +97,10 @@ Access via `/tm` or left-click the minimap button. The window is a fixed-size ta
 | **Solo: show Target bar** | When ungrouped, show a single live threat/health bar for your target |
 | **Hide DPS In Raid** | In raids, only show tanks and healers |
 | **Lock Frame** | Lock/unlock frame position (green border when unlocked) |
-| **Marker Button Size** | Size of the raid-marker buttons (12–40 px) |
-| **Interrupt Button Size** | Size of the interrupt / taunt buttons (12–40 px) |
+| **Marker Button Size** | Size of the raid-marker buttons (12-40 px) |
+| **Interrupt Button Size** | Size of the interrupt / taunt buttons (12-40 px) |
 
-**Spells tab** — Left-click spell, Right-click spell, and Interrupt spell, each picked from a filtered scan of your full spellbook (tabs, flyouts, talents, action bars). Your class interrupt is always offered in all three pickers. When **Show Interrupt Button** is off, the Interrupt Spell picker is greyed out with a note and cannot be opened.
+**Spells tab** - Left-click spell, Right-click spell, and Interrupt spell, each picked from a filtered scan of your full spellbook (tabs, flyouts, talents, action bars). Your class interrupt is always offered in all three pickers. When **Show Interrupt Button** is off, the Interrupt Spell picker is greyed out with a note and cannot be opened.
 
 **Alerts tab**
 
@@ -117,18 +117,18 @@ Access via `/tm` or left-click the minimap button. The window is a fixed-size ta
 
 | Problem | Solution |
 |---|---|
-| No bars showing | Join a party or raid — solo mode shows only your own bar |
+| No bars showing | Join a party or raid - solo mode shows only your own bar |
 | Spells not in dropdown | Type `/tm spells` for a diagnostic dump; try reopening the picker after a moment |
-| "Invalid target" | The group member's target may be dead or doesn't exist — this is normal |
+| "Invalid target" | The group member's target may be dead or doesn't exist - this is normal |
 | Bars appear but clicks do nothing | Ensure you're out of combat, then `/reload` to rebuild macros |
 | Green squares / outlines on buttons | Should not happen in 6.7.0+; the friendly-target indicator that caused this was removed |
 | Role icons missing | Some specs have no assigned LFG role; the addon now infers from spec and falls back to DPS |
-| Wrong spell after reload | Fixed in 6.3.0 — spells now refresh from SavedVariables on load |
+| Wrong spell after reload | Fixed in 6.3.0 - spells now refresh from SavedVariables on load |
 | Pull alert not firing | You must be targeting the mob the non-tank pulled; alert is based on threat healthbar color |
 | Pull alert spamming | 5-second debounce per unit is active; if still spamming, disable via Options |
 | Raid marker not applying | Select a target first; each button in the marker bar toggles its marker (place/remove). The old single skull button was replaced by the full 8-marker bar in 7.0.0 |
-| Interrupt / taunt button does nothing | The macro is set out of combat only; leave combat and `/reload`. Set the interrupt spell in Options → Spells |
-| Pull alert not announcing in chat | By design in 7.0.0 — automated combat chat was removed (caused `ADDON_ACTION_BLOCKED`); the announce is now an on-screen raid-warning banner |
+| Interrupt / taunt button does nothing | The macro is set out of combat only; leave combat and `/reload`. Set the interrupt spell in Options -> Spells |
+| Pull alert not announcing in chat | By design in 7.0.0 - automated combat chat was removed (caused `ADDON_ACTION_BLOCKED`); the announce is now an on-screen raid-warning banner |
 
 Enable Lua error reporting for detailed diagnostics:
 ```
@@ -163,13 +163,13 @@ Modernized and rewritten
 - Interrupt Spell picker greys out with an explanatory note when "Show Interrupt Button" is disabled
 
 ### Version 7.1.0
-- Smart per-class starter kit (taunt / useful spell / interrupt), validated against the character’s known spells (spellbook + active talents)
+- Smart per-class starter kit (taunt / useful spell / interrupt), validated against the character's known spells (spellbook + active talents)
 - Not-in-tanking-spec notice (one-time chat message + Options banner)
-- Fixed: cold-login spells/icons inert until `/reload`; sticky “?” icons; Options spell icons not refreshing; “Reset Defaults” cross-class contamination; “(None - Clear)” not sticking; right-click duplicating the taunt; solo-target NPC class/role squares; test-mode bar sorting; options window too narrow
-- Removed the out-of-range indicator — not achievable under Midnight (12.0) addon-disarmament (range is now an opaque/secret value); `/tm range` kept as a diagnostic
+- Fixed: cold-login spells/icons inert until `/reload`; sticky "?" icons; Options spell icons not refreshing; "Reset Defaults" cross-class contamination; "(None - Clear)" not sticking; right-click duplicating the taunt; solo-target NPC class/role squares; test-mode bar sorting; options window too narrow
+- Removed the out-of-range indicator - not achievable under Midnight (12.0) addon-disarmament (range is now an opaque/secret value); `/tm range` kept as a diagnostic
 
 ### Version 7.0.0
-- Tabbed options window (Layout / Display / Spells / Alerts) — fixed-size, always fits on screen
+- Tabbed options window (Layout / Display / Spells / Alerts) - fixed-size, always fits on screen
 - Test/config mode (`/tm test [N]` or the Layout tab) to lay out the frame solo
 - Whole-frame Scale & Opacity sliders; bar Sort (group / tanks-first / role / name); Compact icon-only mode
 - Dual spell cooldown indicators, configurable Interrupt slot, and Target/Focus taunt secure buttons
@@ -180,12 +180,12 @@ Modernized and rewritten
 ### Version 6.7.0
 - Added Tank/Healer/DPS role icons on every bar (not just tanks); falls back to DPS when role is unassigned and infers from spec
 - Fixed Show Self being ignored when solo (your bar still appeared even with the toggle off)
-- Removed the small green-outlined friendly-target indicator that appeared on bars whose unit was targeting a friendly — confusing visual, full removal including its texture file
+- Removed the small green-outlined friendly-target indicator that appeared on bars whose unit was targeting a friendly - confusing visual, full removal including its texture file
 - Replaced all `UnitIsUnit` calls with GUID comparison for taint-safety in protected contexts
 - Multiple role-icon reliability fixes: stale icon data after roster shrink, atlas/texture loading paths, explicit hide on excess buttons
 
 ### Version 6.6.0
-- Added "Show Self" option to hide your own button from the group list — useful for tanks who don't need to taunt themselves
+- Added "Show Self" option to hide your own button from the group list - useful for tanks who don't need to taunt themselves
 - Session-only setting: always resets to shown on each /reload for reliability; untick in Options to hide
 - Improved skull marker toggle using SecureHandlerWrapScript for clean state switching without taint
 - Improved spell list filtering: dual-purpose spells like Death Coil now appear in the spell picker
@@ -198,7 +198,7 @@ Modernized and rewritten
 - Skull button now registers for both AnyDown and AnyUp, matching Blizzard action bar behaviour
 
 ### Version 6.5.0
-- Added skull marker toggle button above the tank bar header — click to place/remove skull on current target
+- Added skull marker toggle button above the tank bar header - click to place/remove skull on current target
 - Added first-pull detection: distinct "1st Pull by [Name]" flash when someone initiates combat before falling back to normal pull alerts
 - Added first-pull notification checkbox in Options (enabled by default)
 - All pull alert checkboxes now enabled by default for new installations
@@ -212,8 +212,8 @@ Modernized and rewritten
 
 ### Version 6.3.0
 - Added out-of-range indicator (red tint overlay when spell target is beyond range)
-- Rewrote hostile macros to use `@unittarget` directly — eliminates `/assist` and "Invalid target" errors
-- Centralized ADDON_LOADED on header frame — spell dropdowns now refresh from SavedVariables on load
+- Rewrote hostile macros to use `@unittarget` directly - eliminates `/assist` and "Invalid target" errors
+- Centralized ADDON_LOADED on header frame - spell dropdowns now refresh from SavedVariables on load
 - Fixed double-fire on click (RegisterForClicks changed to AnyDown only)
 - Hardened spell filter with explicit blocklist for Fishing, Cooking, Mining, Skinning, and other non-combat spells
 - Throttled OnUpdate to ~10 fps for better CPU performance
@@ -249,4 +249,4 @@ Modernized and rewritten
 
 ## License
 
-This addon is a complete rewrite based on the original TauntMaster2 by Tartarusspawn. All new code © 2025–2026.
+This addon is a complete rewrite based on the original TauntMaster2 by Tartarusspawn. All new code (c) 2025-2026.
