@@ -2,7 +2,7 @@
 
 All notable changes to TauntMasterMini will be documented in this file.
 
-## [7.3.0-forever] - Unreleased (WoW: Forever beta)
+## [7.3.0-forever.1] - 2026-10-05 (WoW: Forever beta)
 
 ### Added
 - **WoW: Forever support** - `TauntMasterMini_Camelot.toc` (Interface 16001); detected via `WOW_PROJECT_ID` 18. Every Forever change is gated, retail behaviour is unchanged
